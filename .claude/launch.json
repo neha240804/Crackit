@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mi-backend",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "--directory", "backend", "uvicorn", "app.main:app", "--reload", "--reload-dir", "app", "--port", "8001", "--loop", "asyncio:SelectorEventLoop"],
+      "port": 8001
+    },
+    {
+      "name": "mi-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "port": 5174
+    }
+  ]
+}

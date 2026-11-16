@@ -1,0 +1,39 @@
+import uuid
+
+from fastapi import APIRouter, UploadFile
+
+from app.api.deps import CurrentUser, DbSession
+from app.schemas.resume import ResumeOut
+from app.services import resume_service
+
+router = APIRouter(prefix="/resumes", tags=["resumes"])
+
+
+@router.post("", response_model=ResumeOut, status_code=201)
+async def upload_resume(file: UploadFile, user: CurrentUser, db: DbSession):
+    return await resume_service.create_resume(db, user, file)
+
+
+@router.get("", response_model=list[ResumeOut])
+async def list_resumes(user: CurrentUser, db: DbSession):
+    return await resume_service.list_resumes(db, user)
+
+
+@router.get("/{resume_id}", response_model=ResumeOut)
+async def get_resume(resume_id: uuid.UUID, user: CurrentUser, db: DbSession):
+    return await resume_service.get_resume(db, user, resume_id)
+
+
+@router.post("/{resume_id}/reparse", response_model=ResumeOut)
+async def reparse_resume(resume_id: uuid.UUID, user: CurrentUser, db: DbSession):
+    return await resume_service.reparse_resume(db, user, resume_id)
+
+
+@router.post("/{resume_id}/primary", response_model=ResumeOut)
+async def set_primary(resume_id: uuid.UUID, user: CurrentUser, db: DbSession):
+    return await resume_service.set_primary(db, user, resume_id)
+
+
+@router.delete("/{resume_id}", status_code=204)
+async def delete_resume(resume_id: uuid.UUID, user: CurrentUser, db: DbSession) -> None:
+    await resume_service.delete_resume(db, user, resume_id)

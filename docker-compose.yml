@@ -1,0 +1,33 @@
+# Infrastructure for MockInterview AI: Postgres + Qdrant.
+# Ports differ from CareerPilot AI (5433/6333) so both projects can run at the same time.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mockinterview-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mockinterview}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mockinterview}
+      POSTGRES_DB: ${POSTGRES_DB:-mockinterview}
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mockinterview}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: mockinterview-qdrant
+    ports:
+      - "6335:6333"   # REST API + dashboard at http://localhost:6335/dashboard
+      - "6336:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+volumes:
+  postgres_data:
+  qdrant_data:
