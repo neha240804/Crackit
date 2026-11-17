@@ -106,3 +106,18 @@ def test_strict_llm_schemas_have_no_optional_fields():
     for schema in (InterviewerTurn, InterviewerTurnWithSwitch):
         optional = [name for name, f in schema.model_fields.items() if not f.is_required()]
         assert optional == [], f"{schema.__name__} has optional fields: {optional}"
+
+
+def test_trim_silence_replaces_edge_silence_with_a_fixed_pause():
+    """Kokoro clips carry ~0.3 s of silence across each seam; played back to back that
+    sounded robotic. Edges are trimmed and a deliberate, consistent pause is appended."""
+    import numpy as np
+
+    from app.services.tts import pause_after, trim_silence
+
+    sr = 24000
+    tone = (0.5 * np.sin(np.linspace(0, 2000, sr))).astype(np.float32)  # 1 s of "speech"
+    clip = np.concatenate([np.zeros(int(0.05 * sr)), tone, np.zeros(int(0.3 * sr))]).astype(np.float32)
+    out = trim_silence(clip, sr, pause_s=0.18)
+    assert abs(len(out) / sr - (1.0 + 0.015 + 0.18)) < 0.02
+    assert pause_after("How would you check it?") > pause_after("First, the data,")

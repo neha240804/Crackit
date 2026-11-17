@@ -27,12 +27,18 @@ class TTSRequest(BaseModel):
 # Declared before /{session_id} routes so "tts" isn't parsed as a session id.
 @router.post("/tts", responses={200: {"content": {"audio/wav": {}}}, 503: {}})
 async def text_to_speech(body: TTSRequest, user: CurrentUser) -> Response:
-    """Natural interviewer voice (Groq Orpheus). 503 = use the browser voice instead."""
+    """Natural interviewer voice (local Kokoro). 503 = use the browser voice instead.
+
+    X-Gen-Per-Audio: the server's measured generation speed (seconds of work per second of
+    audio). The browser uses it to decide when playback can start without stalling."""
     try:
         audio = await tts.synthesize(body.text, body.interviewer)
     except tts.TTSUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
-    return Response(audio, media_type="audio/wav", headers={"Cache-Control": "private, no-store"})
+    return Response(audio, media_type="audio/wav", headers={
+        "Cache-Control": "private, no-store",
+        "X-Gen-Per-Audio": str(tts.gen_per_audio()),
+    })
 
 
 @router.post("", response_model=InterviewSessionOut, status_code=201)

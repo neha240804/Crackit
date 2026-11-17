@@ -16,10 +16,11 @@ export const EXPERIENCE: { id: ExperienceLevel; label: string }[] = [
 
 export const DURATIONS = [5, 10, 15] as const
 
-export const INTERVIEWERS: { id: InterviewerId; name: string; style: string; color: string }[] = [
-  { id: 'maya', name: 'Maya', style: 'Warm & encouraging', color: 'from-fuchsia-500 to-brand-500' },
-  { id: 'arjun', name: 'Arjun', style: 'Direct & technical', color: 'from-amber-500 to-red-500' },
-  { id: 'sara', name: 'Sara', style: 'Calm & structured', color: 'from-emerald-500 to-teal-600' },
+// Portraits and their palettes live in components/Brand.tsx (Avatar).
+export const INTERVIEWERS: { id: InterviewerId; name: string; style: string }[] = [
+  { id: 'maya', name: 'Maya', style: 'Warm & encouraging' },
+  { id: 'arjun', name: 'Arjun', style: 'Direct & technical' },
+  { id: 'sara', name: 'Sara', style: 'Calm & structured' },
 ]
 
 export const POPULAR_TOPICS = [

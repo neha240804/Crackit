@@ -7,7 +7,7 @@ profiles, reports, scores) is stored as JSONB.
 
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,7 +27,11 @@ class User(TimestampedBase):
 
 
 class Resume(TimestampedBase):
-    """Uploaded resume, parsed into a CandidateProfile for resume-/JD-based interviews."""
+    """Uploaded resume, parsed into a CandidateProfile.
+
+    `purpose` keeps two separate lists: resumes for interviews (resume-/JD-based questions)
+    and resumes checked in the ATS tool. Users asked for them not to be mixed: trying a draft
+    in the ATS checker must not change which resume the interviewer asks about."""
 
     __tablename__ = "resumes"
 
@@ -38,11 +42,14 @@ class Resume(TimestampedBase):
     profile: Mapped[dict | None] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String(20), default="processing")  # processing|ready|failed
     error: Mapped[str | None] = mapped_column(Text)
-    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)  # default within its purpose
+    purpose: Mapped[str] = mapped_column(
+        String(20), default="interview", server_default="interview", index=True
+    )  # interview | ats
 
 
 class JobDescription(TimestampedBase):
-    """A job description pasted for a JD-based interview."""
+    """A job description pasted for a JD-based interview or an ATS check."""
 
     __tablename__ = "job_descriptions"
 
@@ -51,6 +58,24 @@ class JobDescription(TimestampedBase):
     company: Mapped[str | None] = mapped_column(String(255))
     raw_text: Mapped[str] = mapped_column(Text)
     parsed: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class ResumeVersion(TimestampedBase):
+    """One ATS-optimized rewrite of a resume (optionally tailored to a job description)."""
+
+    __tablename__ = "resume_versions"
+
+    resume_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("resumes.id", ondelete="CASCADE"), index=True
+    )
+    jd_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("job_descriptions.id", ondelete="SET NULL")
+    )
+    content: Mapped[dict] = mapped_column(JSONB)  # rewritten resume; each bullet has source_ids
+    ats_score: Mapped[float | None] = mapped_column(Float)
+    analysis: Mapped[dict | None] = mapped_column(JSONB)  # rule results, gaps, verification
+    docx_path: Mapped[str | None] = mapped_column(String(500))
+    verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class InterviewSession(TimestampedBase):

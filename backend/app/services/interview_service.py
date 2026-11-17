@@ -56,7 +56,10 @@ async def _primary_or_given_resume(db: AsyncSession, user: User, resume_id) -> R
         if resume is None or resume.user_id != user.id:
             raise HTTPException(404, "Resume not found")
         return resume
-    return await db.scalar(select(Resume).where(Resume.user_id == user.id, Resume.is_primary))
+    # Only resumes uploaded for interviews: the ATS checker's list is separate on purpose.
+    return await db.scalar(select(Resume).where(
+        Resume.user_id == user.id, Resume.purpose == "interview", Resume.is_primary
+    ))
 
 
 def _context(config: InterviewConfig, resume: Resume | None) -> str:

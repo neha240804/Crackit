@@ -8,6 +8,9 @@ import { createRoot } from 'react-dom/client'
 
 import App from '@/App'
 import { AuthProvider } from '@/features/auth/AuthProvider'
+// Self-hosted fonts (no request to Google): Fraunces for headings, Inter for text.
+import '@fontsource-variable/fraunces'
+import '@fontsource-variable/inter'
 import './index.css'
 
 const queryClient = new QueryClient({

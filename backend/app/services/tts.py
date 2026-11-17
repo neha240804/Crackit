@@ -15,6 +15,7 @@ import asyncio
 import io
 import re
 import threading
+import time
 import wave
 from collections import OrderedDict
 
@@ -60,12 +61,62 @@ def load_model() -> None:
         _load_error = f"Kokoro failed to load: {exc.__class__.__name__}"
 
 
+# Pause added after a chunk, by how the chunk ends. Kokoro's own edge silence varies
+# (measured: 0.02-0.06 s before the first word, ~0.25 s after the last), and back-to-back
+# chunks stacked both into a ~0.3 s gap at EVERY seam, plus any wait for generation. That
+# read as robotic. Trimming the edges and adding a deliberate pause makes seams sound like
+# a speaker's natural rhythm: a short breath after a sentence, barely a beat after a comma.
+PAUSE_AFTER_SENTENCE_S = 0.18
+PAUSE_AFTER_CLAUSE_S = 0.07
+_KEEP_LEAD_S = 0.015  # don't clip the attack of the first consonant
+
+# Seconds of generation per second of audio, measured on THIS machine (moving average).
+# The browser needs it to decide when it can start speaking without stalling later. It
+# used to guess from fetch times, but chunks the server had already pre-generated return in
+# ~50 ms, which made generation look ~10x faster than it is: playback started too early and
+# then waited between sentences. Measured here: ~0.75-0.9 (barely faster than real time).
+_gen_per_audio = 0.85
+
+
+def gen_per_audio() -> float:
+    return round(_gen_per_audio, 3)
+
+
+def pause_after(text: str) -> float:
+    return PAUSE_AFTER_SENTENCE_S if text.rstrip().endswith((".", "!", "?")) else PAUSE_AFTER_CLAUSE_S
+
+
+def trim_silence(samples: np.ndarray, sample_rate: int, pause_s: float) -> np.ndarray:
+    """Cut leading/trailing silence, then append exactly `pause_s` of silence.
+
+    Silence = 10 ms frames whose RMS is under 2% of the clip's loudest frame (relative, so it
+    works for quiet and loud voices alike)."""
+    frame = max(1, int(sample_rate * 0.01))
+    n = len(samples) // frame
+    if n == 0:
+        return samples
+    rms = np.sqrt((samples[: n * frame].reshape(n, frame) ** 2).mean(axis=1))
+    voiced = np.flatnonzero(rms > max(rms.max() * 0.02, 1e-4))
+    if voiced.size == 0:
+        return samples
+    start = max(0, voiced[0] * frame - int(_KEEP_LEAD_S * sample_rate))
+    end = min(len(samples), (voiced[-1] + 1) * frame)
+    pause = np.zeros(int(pause_s * sample_rate), dtype=samples.dtype)
+    return np.concatenate([samples[start:end], pause])
+
+
 def _synthesize_sync(text: str, voice: str) -> bytes:
+    global _gen_per_audio
     with _lock:
+        t0 = time.perf_counter()
         samples, sample_rate = _model.create(
             text, voice=voice, speed=settings.tts_speed, lang="en-us"
         )
-    return to_wav(np.asarray(samples), sample_rate)
+        took = time.perf_counter() - t0
+    samples = np.asarray(samples, dtype=np.float32)
+    if len(samples):
+        _gen_per_audio = 0.7 * _gen_per_audio + 0.3 * (took / (len(samples) / sample_rate))
+    return to_wav(trim_silence(samples, sample_rate, pause_after(text)), sample_rate)
 
 
 def to_wav(samples: np.ndarray, sample_rate: int) -> bytes:

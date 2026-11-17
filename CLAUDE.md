@@ -2,8 +2,10 @@
 
 Real-time **voice mock interviews**. Split out of the CareerPilot AI project
 (`C:/Users/Neha/code/CareerPilotAI`) so this repo contains only the interview product:
-landing page, accounts, an optional resume (to personalise interviews), the interview room
-and feedback reports.
+landing page, accounts, the interview room and feedback reports, plus an **ATS resume
+check** (ported from CareerPilot's optimizer). Resumes have a `purpose`: **interview**
+resumes (uploaded on the New Interview page for resume-/JD-based interviews) and **ats**
+resumes (the ATS checker) are separate lists by design.
 
 ## Main goal
 
@@ -40,7 +42,9 @@ interviewer, not a chatbot reading predefined questions:
 Browser                                              FastAPI backend (:8001)
 ───────                                              ───────────────────────
 /register, /login ── /auth/* ──────────────────────► JWT auth (bcrypt)
-/resume (optional) ─ POST /resumes ────────────────► profile graph: extract → parse → chunk to Qdrant
+/resume (ATS check)─ POST /resumes ────────────────► profile graph: extract → parse → chunk to Qdrant
+                     POST /optimizer/analyze ──────► optimizer graph (mode=analyze): ATS rules + keyword match + gaps
+                     POST /optimizer/optimize ─────► … → rewrite → verify (loop ≤3) → finalize; saves version + DOCX
 /interviews/new ──── POST /interviews ─────────────► start(): prepare→plan→opening→listen ⏸
 Room: Start ──────── POST /interviews/{id}/begin ──► clock starts (started_at in DB)
 speak()  ◄────────── POST /interviews/tts (chunks) ─ Kokoro (pre-generated in background)
@@ -51,11 +55,27 @@ End ─────────────── POST /{id}/end ─────
 Report page ─────── POST /{id}/report ─────────────► build_report (strong LLM + code metrics), cached
 ```
 
-### Database (5 tables)
+### Database (6 tables)
 
-`users`, `resumes` (parsed profile JSONB), `job_descriptions`, `interview_sessions`
+`users`, `resumes` (parsed profile JSONB, `purpose` interview|ats, one primary per purpose), `job_descriptions`, `resume_versions`
+(optimized rewrite + analysis JSONB + DOCX path), `interview_sessions`
 (config JSONB incl. `started_at`, `thread_id`, `report` JSONB), `interview_turns`.
 LangGraph creates its own `checkpoint*` tables (Alembic ignores them).
+
+### ATS optimizer graph (`backend/app/agents/optimizer/graph.py`)
+
+```
+START → analyze_jd (LLM, if JD) → ats_audit (code) → gap_analysis (LLM, if JD)
+      --analyze--> END
+      --optimize--> rewrite (LLM) → verify (code + LLM judge) --issues, attempts left--> rewrite
+                                                              --clean / out of tries--> finalize (code) → END
+```
+
+- **Scores are code** (`services/ats_rules.py`, `services/keyword_match.py`): same resume, same
+  score, every lost point has a reason. Overall = 35% format + 65% job match when a JD is given.
+- **Never fabricate:** every rewritten bullet cites source ids (`agents/profile/sources.py`);
+  code rejects numbers not in the cited sources; `finalize` restores titles/dates, drops
+  unknown skills and reverts still-flagged lines to the original text.
 
 ### LangGraph interview graph (`backend/app/agents/interview/graph.py`)
 
@@ -95,6 +115,7 @@ build_report(): separate function, called after the interview
 | `backend/app/schemas/interview.py` | API + LLM schemas, `PERSONAS` (maya / arjun / sara) |
 | `backend/app/agents/profile/graph.py`, `sources.py` | Resume parsing graph; resume → numbered sources for the interviewer |
 | `backend/app/services/resume_service.py`, `api/v1/resumes.py` | Resume upload / list / primary / reparse / delete |
+| `backend/app/agents/optimizer/*`, `services/optimizer_service.py`, `api/v1/optimizer.py` | ATS check + fact-checked rewrite, versions, DOCX export (`services/docx_render.py`) |
 | `backend/app/agents/common/llm.py` | `get_llm` / `get_structured_llm` (strict json_schema, model fallback) |
 | `backend/app/core/http.py` | Shared Groq HTTP pool (120 s keep-alive) |
 | `backend/app/rag/knowledge_base.py` + `knowledge_base/` | Question banks and rubrics, re-indexed at startup |
@@ -105,15 +126,16 @@ build_report(): separate function, called after the interview
 |---|---|
 | `frontend/src/App.tsx` | Routes: `/` landing, `/login`, `/register`; logged in: `/dashboard`, `/resume`, `/interviews/new`, `/interviews/:id/report` (light, `AppShell` top bar); `/interviews/:id` room (dark, full screen) |
 | `frontend/src/pages/LandingPage.tsx` | Public page: hero with an HTML conversation preview, features, how it works, interviewers |
-| `frontend/src/pages/DashboardPage.tsx` | Stats, unfinished interviews, recent reports, quick-start topics (`/interviews/new?topic=…`) |
-| `frontend/src/pages/NewInterviewPage.tsx` | Device checks, mic level test, interview settings (full page) |
-| `frontend/src/pages/InterviewRoomPage.tsx` | Full-screen room; phase machine `ready → speaking → listening → processing → …` |
+| `frontend/src/pages/DashboardPage.tsx` | Stats, the 4 interview formats (`/interviews/new?type=…`), full-width history, product info below the fold |
+| `frontend/src/pages/NewInterviewPage.tsx` | Device checks (fixed column) + interview settings (only this card scrolls on lg); reads `?type=` and `?topic=`; resume/JD formats pick or upload an interview resume (`features/resume/InterviewResumePicker.tsx`) and send `resume_id` |
+| `frontend/src/pages/InterviewRoomPage.tsx` | Full-screen "stage": interviewer centre, captions, small self-view, transcript drawer, bottom dock. Voice only (no typed answers). Phase machine `ready → speaking → listening → processing → …` |
 | `frontend/src/pages/InterviewReportPage.tsx` | Feedback report |
-| `frontend/src/pages/ResumePage.tsx` | Optional resume upload for resume-/JD-based interviews |
+| `frontend/src/pages/ResumePage.tsx` (`/resume`, nav "ATS check") | Upload/select resume + optional JD → ATS report (`features/ats/AtsReport.tsx`: score, action plan, keywords, gaps, format checks) or optimized version (`OptimizedVersion.tsx`, DOCX) |
 | `frontend/src/features/interview/media.ts` | Camera/mic, `AnswerRecorder` (VAD), `LiveCaptions`, `speak()` (server voice + adaptive buffering, browser fallback) |
 | `frontend/src/features/interview/api.ts` | API calls; converts `remaining_seconds` to `deadline_ms` outside render |
-| `frontend/src/components/AppShell.tsx`, `Brand.tsx` | Top bar layout, logo, score card |
-| `frontend/src/index.css` | Design tokens: `brand-*` (indigo), `accent-*` (violet), `ink-*` (slate) |
+| `frontend/src/components/AppShell.tsx`, `Brand.tsx` | Top bar layout, logo, score card; `Avatar` = original faceless SVG portraits per interviewer (maya / arjun / sara) |
+| `frontend/src/index.css` | Design tokens: `paper` (warm off-white), `brand-*` (sage), `ink-*` (warm neutrals), success/warning/danger; Fraunces serif headings + Inter. No gradients or glass effects |
+| `frontend/src/components/ui/styles.ts` | `buttonClass()` / `fieldClass` (kept out of `.tsx` so Fast Refresh works) |
 
 ### Voice pipeline (latency-critical)
 
@@ -127,8 +149,14 @@ build_report(): separate function, called after the interview
 - **Speech output:** the server splits lines **only at sentence/clause boundaries**
   (`speech_chunks`) and starts generating immediately (`presynthesize`); a newer line in the
   same interview cancels the stale backlog. The browser schedules chunks on one Web Audio
-  timeline and starts only when `canStartGapless()` predicts no stall (≤ 0.6 s breath between
-  sentences, max 3 s initial wait). Transcript text is revealed **as it is spoken**.
+  timeline and starts only when `canStartGapless()` predicts no stall (≤ 0.15 s extra wait
+  between chunks, max 3 s initial wait). Transcript text is revealed **as it is spoken**.
+- **Seams between sentences:** Kokoro clips carry ~0.3 s of edge silence across each seam
+  (measured), which sounded robotic. `trim_silence()` cuts it and appends a fixed pause:
+  0.18 s after a sentence, 0.07 s after a comma.
+- **Generation speed comes from the server** (`X-Gen-Per-Audio` header, measured ~0.8 here).
+  Estimating it from fetch times was wrong: pre-generated chunks return in ~50 ms, so the
+  browser started too early and then stalled between sentences.
 
 ## Running locally (Windows)
 
@@ -161,6 +189,9 @@ https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1 (full 
   with `--loop asyncio:SelectorEventLoop` (without `--reload` uvicorn would pick Proactor).
 - **`--reload-dir app`:** watching all of `backend/` reloads on every package install in `.venv`
   and once left the server stuck mid-reload.
+- **Reload can still hang** (seen twice: adding the optimizer, editing `tts.py`): the log ends
+  at "Reloading..." with no "Application startup complete", and the OLD process keeps serving
+  the old code. After backend edits, check the log; if stuck, stop and restart uvicorn.
 - **Groq strict JSON schema treats every field as required.** LLM output schemas must have **no
   optional fields** (a test enforces this). Optional fields caused `400 json_validate_failed`
   and broke live interviews. Use a separate schema when extra fields are needed.

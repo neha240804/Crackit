@@ -46,12 +46,12 @@ export function UploadDropzone({ onFile, onInvalid, busy }: Props) {
       onDragLeave={() => setDragging(false)}
       onDrop={onDrop}
       className={cn(
-        'flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8',
+        'flex w-full flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-10',
         'text-center transition-colors disabled:cursor-wait',
-        dragging ? 'border-brand-500 bg-brand-50' : 'border-ink-200 bg-white hover:border-brand-200',
+        dragging ? 'border-brand-500 bg-brand-50' : 'border-ink-300 bg-white/60 hover:border-brand-500 hover:bg-white',
       )}
     >
-      <FileUp className="mb-2 size-7 text-brand-500" aria-hidden />
+      <FileUp className="mb-3 size-6 text-brand-600" aria-hidden />
       <span className="text-sm font-medium">
         {busy ? 'Reading your resume with AI…' : 'Drop your resume here or click to browse'}
       </span>

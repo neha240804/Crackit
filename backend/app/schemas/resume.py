@@ -14,5 +14,6 @@ class ResumeOut(BaseModel):
     status: str
     error: str | None
     is_primary: bool
+    purpose: str  # interview | ats
     created_at: datetime
     profile: CandidateProfile | None

@@ -1,82 +1,71 @@
-// Public landing page (light). Logged-in visitors go straight to the dashboard.
+// Public landing page: editorial layout, warm paper, one sage accent, serif headlines.
+// Logged-in visitors go straight to the dashboard.
 
-import {
-  ArrowRight,
-  BadgeCheck,
-  BriefcaseBusiness,
-  Captions,
-  FileText,
-  GitBranch,
-  MessageSquareQuote,
-  Mic,
-  Sparkles,
-  Timer,
-  Users,
-} from 'lucide-react'
+import { ArrowRight, AudioLines, Captions, Gauge, MessageSquareQuote, RotateCcw, Route } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link, Navigate } from 'react-router'
 
-import { Logo } from '@/components/Brand'
+import { Avatar, Logo } from '@/components/Brand'
+import { Card, Eyebrow } from '@/components/ui'
+import { buttonClass } from '@/components/ui/styles'
 import { useAuth } from '@/features/auth/context'
 import { INTERVIEWERS } from '@/features/interview/constants'
-import { cn } from '@/lib/utils'
 
-const FEATURES: { icon: typeof Mic; title: string; text: string }[] = [
-  { icon: Mic, title: 'A real voice conversation', text: 'The interviewer speaks, listens and replies naturally. Just answer out loud; pausing for two seconds hands the turn back.' },
-  { icon: MessageSquareQuote, title: 'Reactions to what you said', text: 'Correct answers get specific credit, mistakes get a one-line correction. No generic "thank you" after every answer.' },
-  { icon: GitBranch, title: 'Follow-ups like a real interviewer', text: 'Strong answers lead to deeper questions; if you are stuck, the interviewer explains and moves on, as a real one would.' },
-  { icon: Captions, title: 'Live captions', text: 'See your words appear as you speak, and the interviewer’s words as they are said.' },
-  { icon: BadgeCheck, title: 'Detailed feedback report', text: 'Scores per question, what was good, what was missing, a model answer, and your speaking pace and filler words.' },
-  { icon: Timer, title: 'Time-boxed sessions', text: '5, 10 or 15 minutes. Refresh by accident? The interview picks up exactly where you left off.' },
+const TYPES = [
+  ['Any topic', 'Machine learning, React, SQL, system design. You choose the subject.'],
+  ['Your resume', 'Questions about the projects and experience you actually have.'],
+  ['A job post', 'Paste a description and rehearse for that specific role.'],
+  ['Behavioral', 'Introductions, teamwork and challenges, judged on structure.'],
 ]
 
-const TYPES: { icon: typeof Mic; title: string; text: string }[] = [
-  { icon: Sparkles, title: 'Any topic', text: 'Machine learning, React, SQL, system design… you choose.' },
-  { icon: FileText, title: 'Your resume', text: 'Questions about your own projects and experience.' },
-  { icon: BriefcaseBusiness, title: 'A job description', text: 'Paste a posting and practise for that role.' },
-  { icon: Users, title: 'HR & behavioral', text: 'Introductions, teamwork, challenges, scored on STAR.' },
+const FEATURES: { icon: typeof AudioLines; title: string; text: string }[] = [
+  { icon: AudioLines, title: 'Spoken, not typed', text: 'Answer out loud. A two-second pause hands the turn back, the way it does in a real room.' },
+  { icon: MessageSquareQuote, title: 'It responds to you', text: 'Credit where you were right, a one-line correction where you were not. Never a generic "thank you".' },
+  { icon: Route, title: 'Follow-ups with intent', text: 'Strong answers lead deeper. When you are stuck, it explains the idea and moves on.' },
+  { icon: Captions, title: 'Live captions', text: 'Your words appear as you speak; the interviewer’s appear as they are said.' },
+  { icon: Gauge, title: 'Feedback you can use', text: 'Scores for every question, a model answer, and your pace and filler words, measured.' },
+  { icon: RotateCcw, title: 'Resumable sessions', text: '5, 10 or 15 minutes. Close the tab by accident and you continue where you left off.' },
 ]
 
-function Section({ id, eyebrow, title, children }: { id?: string; eyebrow: string; title: string; children: ReactNode }) {
-  return (
-    <section id={id} className="mx-auto max-w-6xl px-6 py-20">
-      <p className="text-sm font-semibold tracking-wide text-brand-600 uppercase">{eyebrow}</p>
-      <h2 className="mt-2 max-w-2xl text-3xl font-semibold tracking-tight">{title}</h2>
-      <div className="mt-10">{children}</div>
-    </section>
-  )
+const STEPS = [
+  ['Choose', 'Pick a topic, your resume, a job post or behavioral questions. Set the level, the length and who interviews you.'],
+  ['Converse', 'The interviewer asks, listens and follows up on what you said. Speak naturally, or type if you prefer.'],
+  ['Review', 'Read a clear report: what was strong, what was missing, and what a great answer would have covered.'],
+]
+
+function Container({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return <div className={`mx-auto w-full max-w-6xl px-6 sm:px-8 ${className}`}>{children}</div>
 }
 
-/** A static preview of a conversation, built in HTML (no screenshots). */
-function ConversationPreview() {
+/** The product, shown as a quiet transcript card rather than a screenshot. */
+function TranscriptPreview() {
   return (
-    <div className="relative">
-      <div className="absolute -inset-6 -z-10 rounded-[2rem] bg-gradient-to-br from-brand-200/60 via-accent-500/10 to-transparent blur-2xl" />
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0b1020] p-5 text-sm text-white shadow-2xl">
-        <div className="mb-4 flex items-center justify-between text-xs text-ink-400">
-          <span className="flex items-center gap-2"><span className="size-2 animate-pulse rounded-full bg-emerald-400" /> Live interview · Bias-Variance</span>
-          <span className="rounded-full border border-white/15 px-2 py-0.5 tabular-nums">7:42</span>
+    <Card className="overflow-hidden">
+      <div className="flex items-center justify-between border-b border-ink-200 px-5 py-3.5 text-xs text-ink-500">
+        <span className="flex items-center gap-2"><span className="size-1.5 rounded-full bg-brand-600" /> Live · Bias–Variance · Fresher</span>
+        <span className="tabular-nums">07:42</span>
+      </div>
+      <div className="space-y-5 px-5 py-6 text-[0.94rem] leading-relaxed">
+        <div>
+          <p className="mb-1 text-[11px] font-medium tracking-[0.12em] text-ink-400 uppercase">Arjun</p>
+          <p className="text-ink-900">Your model scores 99% on training data but 80% on the test set. What is going on?</p>
         </div>
-        <div className="space-y-3">
-          <div className="rounded-xl bg-brand-500/20 px-3 py-2">
-            <p className="text-[10px] font-medium tracking-wide text-ink-400 uppercase">Arjun · interviewer</p>
-            Your model scores 99% on training data but 80% on test data. What is going on?
-          </div>
-          <div className="ml-8 rounded-xl bg-white/[0.07] px-3 py-2">
-            <p className="text-[10px] font-medium tracking-wide text-ink-400 uppercase">You</p>
-            That gap means it’s overfitting: low bias but high variance. I’d add regularisation or more data…
-          </div>
-          <div className="rounded-xl bg-brand-500/20 px-3 py-2">
-            <p className="text-[10px] font-medium tracking-wide text-ink-400 uppercase">Arjun · speaking</p>
-            Right, that’s high variance. How would a learning curve confirm it?
-          </div>
+        <div className="border-l-2 border-brand-200 pl-4">
+          <p className="mb-1 text-[11px] font-medium tracking-[0.12em] text-ink-400 uppercase">You</p>
+          <p className="text-ink-700">That gap means it is overfitting: low bias, high variance. I would add regularisation or more data.</p>
         </div>
-        <div className="mt-4 flex flex-wrap gap-2 text-xs">
-          <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-emerald-300">✓ Correct diagnosis</span>
-          <span className="rounded-full bg-white/10 px-2.5 py-1 text-ink-200">132 wpm · 1 filler word</span>
+        <div>
+          <p className="mb-1 flex items-center gap-2 text-[11px] font-medium tracking-[0.12em] text-ink-400 uppercase">
+            Arjun <span className="flex items-end gap-0.5" aria-hidden>{[3, 6, 4].map((h, i) => <span key={i} className="w-0.5 rounded-full bg-brand-500" style={{ height: h * 2 }} />)}</span>
+          </p>
+          <p className="text-ink-900">Right, that is high variance. How would a learning curve confirm it?</p>
         </div>
       </div>
-    </div>
+      <div className="flex flex-wrap gap-2 border-t border-ink-200 bg-ink-50 px-5 py-3.5 text-xs">
+        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-brand-700">Correct diagnosis</span>
+        <span className="rounded-full bg-white px-2.5 py-1 text-ink-500 ring-1 ring-ink-200">132 wpm · 1 filler word</span>
+      </div>
+    </Card>
   )
 }
 
@@ -85,122 +74,189 @@ export function LandingPage() {
   if (user) return <Navigate to="/dashboard" replace />
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* nav */}
-      <header className="sticky top-0 z-30 border-b border-ink-100 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-8 px-6">
-          <Logo />
-          <nav className="hidden gap-6 text-sm text-ink-500 md:flex">
-            <a href="#features" className="hover:text-ink-900">Features</a>
-            <a href="#how" className="hover:text-ink-900">How it works</a>
-            <a href="#interviewers" className="hover:text-ink-900">Interviewers</a>
+    <div className="min-h-screen bg-paper">
+      {/* ---------------------------------------------------------------- header */}
+      <header className="border-b border-ink-200/80">
+        <Container className="flex h-[72px] items-center gap-4 md:gap-10">
+          <Link to="/" aria-label="MockInterview home" className="shrink-0"><Logo /></Link>
+          <nav className="hidden gap-8 text-sm text-ink-500 md:flex" aria-label="Sections">
+            <a href="#how" className="transition-colors hover:text-ink-900">How it works</a>
+            <a href="#features" className="transition-colors hover:text-ink-900">Features</a>
+            <a href="#interviewers" className="transition-colors hover:text-ink-900">Interviewers</a>
           </nav>
-          <div className="ml-auto flex items-center gap-2">
-            <Link to="/login" className="rounded-lg px-4 py-2 text-sm font-medium text-ink-700 hover:bg-ink-100">Log in</Link>
-            <Link to="/register" className="rounded-lg bg-ink-900 px-4 py-2 text-sm font-medium text-white hover:bg-ink-700">Get started</Link>
+          <div className="ml-auto flex items-center gap-1 whitespace-nowrap sm:gap-4">
+            <Link to="/login" className="px-2 text-sm font-medium text-ink-700 transition-colors hover:text-ink-900">Log in</Link>
+            {/* shorter label on phones so the bar never wraps */}
+            <Link to="/register" className={buttonClass('primary', 'px-4 sm:px-5')}>
+              <span className="sm:hidden">Sign up</span><span className="hidden sm:inline">Start practising</span>
+            </Link>
           </div>
-        </div>
+        </Container>
       </header>
 
-      {/* hero */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-x-0 -top-40 -z-0 h-96 bg-[radial-gradient(ellipse_at_top,var(--color-brand-100),transparent_60%)]" />
-        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 lg:grid-cols-[1.1fr_1fr]">
-          <div>
-            <span className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700">
-              <Sparkles className="size-3.5" /> Free · Voice-first · Instant feedback
-            </span>
-            <h1 className="mt-5 text-4xl leading-tight font-semibold tracking-tight sm:text-5xl">
-              Practise interviews out loud with an AI interviewer that <span className="text-gradient">actually listens</span>.
+      {/* ---------------------------------------------------------------- hero */}
+      <section>
+        <Container className="grid items-center gap-14 pt-16 pb-20 sm:pt-24 sm:pb-28 lg:grid-cols-12 lg:gap-12">
+          <div className="lg:col-span-7">
+            <Eyebrow>Voice mock interviews</Eyebrow>
+            <h1 className="mt-6 text-[2.75rem] leading-[1.05] font-semibold sm:text-6xl lg:text-[4.25rem]">
+              Practise the conversation, <em className="font-medium text-brand-700">not just the answers.</em>
             </h1>
-            <p className="mt-5 max-w-xl text-lg text-ink-500">
-              Speak your answers, get follow-up questions based on what you said, and finish with a
-              detailed report on your knowledge and your communication.
+            <p className="mt-7 max-w-xl text-lg leading-relaxed text-ink-500">
+              An AI interviewer that speaks, listens and follows up on what you actually said, then
+              gives you an honest, detailed account of how it went.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link to="/register" className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-accent-600 px-6 py-3 font-medium text-white shadow-lg shadow-brand-600/25 hover:opacity-95">
-                Start practising free <ArrowRight className="size-4" />
+            <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-4">
+              <Link to="/register" className={buttonClass('primary', 'px-7 py-3 text-[0.95rem]')}>
+                Start your first interview <ArrowRight className="size-4" />
               </Link>
-              <Link to="/login" className="rounded-xl border border-ink-200 px-6 py-3 font-medium text-ink-700 hover:bg-ink-50">I have an account</Link>
+              <a href="#how" className="text-sm font-medium text-ink-700 underline decoration-ink-300 underline-offset-4 transition-colors hover:decoration-ink-700">
+                See how it works
+              </a>
             </div>
-            <p className="mt-4 text-xs text-ink-400">Your camera stays on your device. Works best in Chrome or Edge.</p>
+            <p className="mt-8 text-sm text-ink-400">Free to use · No camera recording · Best in Chrome or Edge</p>
           </div>
-          <ConversationPreview />
-        </div>
+          <div className="lg:col-span-5">
+            <TranscriptPreview />
+          </div>
+        </Container>
       </section>
 
-      {/* interview types */}
-      <div className="border-y border-ink-100 bg-ink-50">
-        <div className="mx-auto grid max-w-6xl gap-6 px-6 py-10 sm:grid-cols-2 lg:grid-cols-4">
-          {TYPES.map(({ icon: Icon, title, text }) => (
-            <div key={title} className="flex gap-3">
-              <Icon className="mt-0.5 size-5 shrink-0 text-brand-600" aria-hidden />
-              <div>
-                <p className="font-medium">{title}</p>
-                <p className="text-sm text-ink-500">{text}</p>
-              </div>
+      {/* ---------------------------------------------------------------- interview types */}
+      <section className="border-y border-ink-200/80 bg-white">
+        <Container className="grid sm:grid-cols-2 lg:grid-cols-4">
+          {TYPES.map(([title, text], i) => (
+            <div key={title} className="border-ink-200/80 py-10 sm:px-8 sm:first:pl-0 lg:border-l lg:first:border-l-0 [&:nth-child(n+3)]:border-t sm:[&:nth-child(n+3)]:border-t lg:[&:nth-child(n+3)]:border-t-0 [&:nth-child(2)]:border-t sm:[&:nth-child(2)]:border-t-0">
+              <p className="font-serif text-sm text-brand-600">0{i + 1}</p>
+              <p className="mt-3 font-serif text-xl font-semibold">{title}</p>
+              <p className="mt-2 text-sm leading-relaxed text-ink-500">{text}</p>
             </div>
           ))}
-        </div>
-      </div>
+        </Container>
+      </section>
 
-      <Section id="features" eyebrow="Features" title="Everything a practice interview needs, nothing it doesn’t">
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map(({ icon: Icon, title, text }) => (
-            <div key={title} className="rounded-2xl border border-ink-100 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
-              <span className="flex size-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><Icon className="size-5" aria-hidden /></span>
-              <p className="mt-4 font-semibold">{title}</p>
-              <p className="mt-1.5 text-sm text-ink-500">{text}</p>
-            </div>
-          ))}
-        </div>
-      </Section>
-
-      <div className="bg-ink-50">
-        <Section id="how" eyebrow="How it works" title="From sign-up to feedback in three steps">
-          <ol className="grid gap-5 md:grid-cols-3">
-            {[
-              ['Set it up', 'Pick a topic, your resume, a job description or HR questions. Choose your level, length and interviewer, and check your mic.'],
-              ['Talk it through', 'The interviewer asks, listens and follows up. Pause for two seconds when you’re done, or type if you prefer.'],
-              ['Learn from it', 'Get scores, specific strengths and gaps, a model answer for every question, and your speaking stats.'],
-            ].map(([title, text], i) => (
-              <li key={title} className="rounded-2xl border border-ink-100 bg-white p-6">
-                <span className="flex size-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-600 to-accent-500 text-sm font-semibold text-white">{i + 1}</span>
-                <p className="mt-4 font-semibold">{title}</p>
-                <p className="mt-1.5 text-sm text-ink-500">{text}</p>
+      {/* ---------------------------------------------------------------- how it works */}
+      <section id="how" className="scroll-mt-8">
+        <Container className="grid gap-12 py-24 sm:py-32 lg:grid-cols-12">
+          <div className="lg:col-span-4">
+            <Eyebrow>How it works</Eyebrow>
+            <h2 className="mt-5 text-4xl leading-tight font-semibold sm:text-5xl">Three steps, one honest conversation.</h2>
+          </div>
+          <ol className="divide-y divide-ink-200 lg:col-span-7 lg:col-start-6">
+            {STEPS.map(([title, text], i) => (
+              <li key={title} className="grid grid-cols-[3.5rem_1fr] gap-4 py-8 first:pt-0 last:pb-0">
+                <span className="font-serif text-3xl leading-none text-brand-600">{i + 1}.</span>
+                <div>
+                  <p className="font-serif text-2xl font-semibold">{title}</p>
+                  <p className="mt-2 leading-relaxed text-ink-500">{text}</p>
+                </div>
               </li>
             ))}
           </ol>
-        </Section>
-      </div>
-
-      <Section id="interviewers" eyebrow="Interviewers" title="Choose who you practise with">
-        <div className="grid gap-5 md:grid-cols-3">
-          {INTERVIEWERS.map((p) => (
-            <div key={p.id} className="flex items-center gap-4 rounded-2xl border border-ink-100 bg-white p-5">
-              <span className={cn('flex size-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-xl font-semibold text-white', p.color)}>{p.name[0]}</span>
-              <div>
-                <p className="font-semibold">{p.name}</p>
-                <p className="text-sm text-ink-500">{p.style}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Section>
-
-      {/* final CTA */}
-      <section className="px-6 pb-20">
-        <div className="mx-auto max-w-6xl overflow-hidden rounded-3xl bg-gradient-to-r from-brand-600 to-accent-600 px-8 py-12 text-white">
-          <h2 className="text-3xl font-semibold tracking-tight">Your next interview is a conversation. Practise one.</h2>
-          <p className="mt-2 text-brand-100">It takes a minute to set up and five to practise.</p>
-          <Link to="/register" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 font-medium text-brand-700 hover:bg-brand-50">
-            Create a free account <ArrowRight className="size-4" />
-          </Link>
-        </div>
+        </Container>
       </section>
 
-      <footer className="border-t border-ink-100 py-8 text-center text-sm text-ink-400">
-        MockInterview AI · Built with FastAPI, LangGraph, Groq and Kokoro
+      {/* ---------------------------------------------------------------- features */}
+      <section id="features" className="scroll-mt-8 bg-paper-deep/60">
+        <Container className="py-24 sm:py-32">
+          <div className="max-w-2xl">
+            <Eyebrow>Features</Eyebrow>
+            <h2 className="mt-5 text-4xl leading-tight font-semibold sm:text-5xl">Built to feel like the real thing.</h2>
+          </div>
+          <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {FEATURES.map(({ icon: Icon, title, text }) => (
+              <Card key={title} className="card-hover p-7">
+                <span className="flex size-10 items-center justify-center rounded-full bg-brand-50 text-brand-700"><Icon className="size-[18px]" aria-hidden /></span>
+                <p className="mt-6 font-serif text-xl font-semibold">{title}</p>
+                <p className="mt-2 text-[0.94rem] leading-relaxed text-ink-500">{text}</p>
+              </Card>
+            ))}
+          </div>
+        </Container>
+      </section>
+
+      {/* ---------------------------------------------------------------- pull quote */}
+      <section>
+        <Container className="py-24 text-center sm:py-32">
+          <blockquote className="mx-auto max-w-3xl font-serif text-3xl leading-snug font-medium text-ink-900 italic sm:text-[2.6rem]">
+            “The best preparation for a conversation is a conversation.”
+          </blockquote>
+          <p className="mt-6 text-sm text-ink-400">The idea behind MockInterview</p>
+        </Container>
+      </section>
+
+      {/* ---------------------------------------------------------------- what you get */}
+      <section className="border-t border-ink-200/80 bg-white">
+        <Container className="grid items-center gap-14 py-24 sm:py-32 lg:grid-cols-2">
+          <div>
+            <Eyebrow>After every session</Eyebrow>
+            <h2 className="mt-5 text-4xl leading-tight font-semibold sm:text-5xl">A report worth reading.</h2>
+            <ul className="mt-8 space-y-4 text-ink-500">
+              {['A score for every question, calibrated to your level', 'What you got right, and exactly what was missing', 'A model outline of a strong answer', 'Speaking pace, filler words and answer length, measured'].map((t) => (
+                <li key={t} className="flex gap-3"><span className="mt-2.5 size-1.5 shrink-0 rounded-full bg-brand-600" />{t}</li>
+              ))}
+            </ul>
+          </div>
+          <Card className="p-7 sm:p-9">
+            <div className="flex items-end justify-between border-b border-ink-200 pb-6">
+              <div>
+                <p className="text-xs tracking-[0.12em] text-ink-500 uppercase">Overall</p>
+                <p className="mt-2 font-serif text-6xl leading-none font-semibold text-success-700">78</p>
+              </div>
+              <p className="text-right text-sm text-ink-500">Bias–Variance<br />10 minutes with Arjun</p>
+            </div>
+            <dl className="grid grid-cols-3 gap-4 py-6 text-center">
+              {[['Technical', 74], ['Clarity', 82], ['Structure', 79]].map(([k, v]) => (
+                <div key={k}><dt className="text-xs text-ink-500">{k}</dt><dd className="mt-1 font-serif text-2xl font-semibold">{v}</dd></div>
+              ))}
+            </dl>
+            <p className="rounded-xl bg-brand-50 p-4 text-sm leading-relaxed text-ink-700">
+              <span className="font-medium text-brand-700">A strong answer</span> would name the train–validation
+              gap, read it from a learning curve, then choose between more data and regularisation.
+            </p>
+          </Card>
+        </Container>
+      </section>
+
+      {/* ---------------------------------------------------------------- interviewers */}
+      <section id="interviewers" className="scroll-mt-8 border-t border-ink-200/80">
+        <Container className="py-24 sm:py-32">
+          <div className="max-w-2xl">
+            <Eyebrow>Interviewers</Eyebrow>
+            <h2 className="mt-5 text-4xl leading-tight font-semibold sm:text-5xl">Choose who sits across the table.</h2>
+          </div>
+          <div className="mt-14 grid gap-5 md:grid-cols-3">
+            {INTERVIEWERS.map((p) => (
+              <Card key={p.id} className="card-hover flex items-center gap-5 p-6">
+                <Avatar persona={p.id} />
+                <div>
+                  <p className="font-serif text-xl font-semibold">{p.name}</p>
+                  <p className="text-sm text-ink-500">{p.style}</p>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </Container>
+      </section>
+
+      {/* ---------------------------------------------------------------- closing CTA */}
+      <section className="pb-24 sm:pb-32">
+        <Container>
+          <div className="rounded-3xl border border-ink-200 bg-paper-deep px-8 py-16 text-center sm:px-16 sm:py-20">
+            <h2 className="mx-auto max-w-2xl text-4xl leading-tight font-semibold sm:text-5xl">Your next interview is a conversation. Rehearse one.</h2>
+            <p className="mx-auto mt-5 max-w-md text-ink-500">It takes a minute to set up and five to practise.</p>
+            <Link to="/register" className={buttonClass('primary', 'mt-9 px-7 py-3 text-[0.95rem]')}>
+              Create a free account <ArrowRight className="size-4" />
+            </Link>
+          </div>
+        </Container>
+      </section>
+
+      <footer className="border-t border-ink-200/80">
+        <Container className="flex flex-col gap-4 py-10 text-sm text-ink-400 sm:flex-row sm:items-center sm:justify-between">
+          <Logo />
+          <p>Voice interviews powered by FastAPI, LangGraph, Groq and Kokoro.</p>
+        </Container>
       </footer>
     </div>
   )

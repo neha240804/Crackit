@@ -7,16 +7,17 @@
 // Mutable things the async loop needs (recorder, captions, abort controller, "ending" flag)
 // live in refs; only what the screen shows lives in state.
 //
-// Layout: on large screens the room is exactly one screen tall and nothing in it changes
-// size between turns (the transcript scrolls inside its panel; the footer has fixed-height
-// slots). That keeps the camera tile, and so the camera framing, constant.
+// Layout: a "stage", not a video-call grid. The interviewer sits in the centre and the
+// conversation reads as captions under them; your camera is a small self-view in the
+// corner (fixed size, so its framing never changes); the transcript is a drawer you can
+// open. The room is exactly one screen tall; answers are voice only (no typing).
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock, Keyboard, Loader2, Mic, PhoneOff, Send, SkipForward, Volume2 } from 'lucide-react'
+import { Clock, Loader2, Mic, PhoneOff, ScrollText, SkipForward, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
-import { Logo } from '@/components/Brand'
+import { Avatar, Logo } from '@/components/Brand'
 import { Spinner } from '@/components/ui'
 import { ApiError } from '@/lib/api'
 import type { InterviewMessage, InterviewSession, InterviewTurn } from '@/lib/types'
@@ -40,6 +41,7 @@ import {
   useAudioLevel,
   useUserMedia,
   voiceDescription,
+  type SpokenPart,
   type VadState,
 } from '@/features/interview/media'
 
@@ -52,12 +54,12 @@ const SPECULATE_AFTER_MS = 900 // start transcribing early, during the pause
 export function InterviewRoomPage() {
   const { id = '' } = useParams()
   const session = useInterview(id)
-  if (session.isLoading) return <div className="min-h-screen bg-[#070b16]"><Spinner label="Loading interview…" /></div>
+  if (session.isLoading) return <div className="min-h-screen bg-[#171614]"><Spinner label="Loading interview…" /></div>
   if (session.isError || !session.data) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#070b16] text-ink-200">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#171614] text-ink-200">
         <p>{session.error?.message ?? 'Interview not found'}</p>
-        <Link to="/dashboard" className="text-brand-200 underline">Back to dashboard</Link>
+        <Link to="/dashboard" className="text-brand-300 underline">Back to dashboard</Link>
       </div>
     )
   }
@@ -97,6 +99,35 @@ function formatClock(seconds: number) {
 
 const NO_VAD: VadState = { speaking: false, heard: false, silenceMs: 0 }
 
+/**
+ * The interviewer's line, streamed word by word in step with the voice: everything said
+ * before this part is shown in full, and this part's words appear evenly across the time
+ * it takes to say them (the audio clip's length, from the player). Remount per part (key).
+ */
+function StreamingLine({ before, text, durationSec }: SpokenPart) {
+  const words = text.split(/\s+/).filter(Boolean)
+  const [shown, setShown] = useState(1)
+  useEffect(() => {
+    const start = performance.now()
+    const perWord = (durationSec * 1000) / Math.max(1, words.length)
+    const timer = window.setInterval(() => {
+      const n = Math.min(words.length, 1 + Math.floor((performance.now() - start) / perWord))
+      setShown(n)
+      if (n >= words.length) window.clearInterval(timer)
+    }, 40)
+    return () => window.clearInterval(timer)
+  }, [durationSec, words.length])
+  return (
+    <>
+      {before && `${before} `}
+      {/* Plain text, no per-word fade-in: a fade that starts at opacity 0 left words invisible
+          when the browser paused animations (seen in testing). The reveal itself is the effect. */}
+      {words.slice(0, shown).join(' ')}
+      <span className="ml-0.5 inline-block h-[0.9em] w-[2px] translate-y-[0.1em] animate-pulse bg-brand-300 align-baseline" aria-hidden />
+    </>
+  )
+}
+
 // ------------------------------------------------------------------ room
 function Room({ session }: { session: InterviewSession }) {
   const navigate = useNavigate()
@@ -113,20 +144,25 @@ function Room({ session }: { session: InterviewSession }) {
   const now = useNow(500, session.deadline_ms - session.remaining_seconds * 1000)
 
   const [phase, setPhase] = useState<Phase>(finished ? 'ended' : 'ready')
-  const [messages, setMessages] = useState<InterviewMessage[]>(session.messages)
+  // A fresh interview's only message is the greeting, which hasn't been SPOKEN yet: keep it
+  // off the screen (stage and transcript) until the interviewer actually says it.
+  const fresh = session.messages.length <= 1
+  const [messages, setMessages] = useState<InterviewMessage[]>(fresh ? [] : session.messages)
   const [currentText, setCurrentText] = useState(session.current?.utterance ?? '')
   const [deadline, setDeadline] = useState(session.deadline_ms)
   // The clock runs only once the candidate pressed Start (server stores started_at).
   const [clockRunning, setClockRunning] = useState(Boolean(session.config.started_at))
   const [notice, setNotice] = useState<string | null>(null)
-  const [typed, setTyped] = useState('')
-  const [showTyping, setShowTyping] = useState(false)
+  // Transcript drawer: open by default on wide screens, where it doesn't cover the stage.
+  const [showTranscript, setShowTranscript] = useState(() => window.matchMedia('(min-width: 1280px)').matches)
   const [vad, setVad] = useState<VadState>(NO_VAD)
   const [live, setLive] = useState({ final: '', interim: '' }) // live captions of the answer
   // The interviewer line being spoken right now, growing as each part becomes audible
   // (null = not revealing; the transcript then shows only committed messages).
   const [speakingText, setSpeakingText] = useState<string | null>(null)
   const [voice, setVoice] = useState<{ natural: boolean; label: string } | null>(null)
+  // The part of the line being spoken right now, streamed word by word under the portrait.
+  const [streaming, setStreaming] = useState<(SpokenPart & { id: number }) | null>(null)
 
   const abortRef = useRef<AbortController | null>(null) // current speech playback
   const recorderRef = useRef<AnswerRecorder | null>(null)
@@ -173,11 +209,14 @@ function Room({ session }: { session: InterviewSession }) {
     const ctrl = new AbortController()
     abortRef.current = ctrl
     // chunks: the server's split of this line, which it has already started voicing
-    await speak(utterance, persona.id, ctrl.signal, chunks, (spokenSoFar) => {
+    await speak(utterance, persona.id, ctrl.signal, chunks, (part) => {
+      const spokenSoFar = `${part.before} ${part.text}`.trim()
       setCurrentText(spokenSoFar)
+      setStreaming({ ...part, id: Date.now() }) // the stage streams this part word by word
       if (isNew) setSpeakingText(spokenSoFar)
     })
     setCurrentText(utterance)
+    setStreaming(null)
     setSpeakingText(null)
     if (isNew) {
       setMessages((m) => [...m, { role: 'interviewer', text: utterance, kind: kind ?? null, duration_sec: null }])
@@ -196,12 +235,15 @@ function Room({ session }: { session: InterviewSession }) {
   }
 
   async function listen() {
-    setPhase('listening')
     setLive({ final: '', interim: '' })
     if (!stream || stream.getAudioTracks().length === 0) {
-      setShowTyping(true) // no microphone: typing is the way to answer
+      // Voice only: without a microphone there is no way to answer. The interview is saved,
+      // so allowing the mic and reloading continues exactly here.
+      setPhase('error')
+      setNotice('Your microphone is off. Allow microphone access in the address bar, then reload to continue.')
       return
     }
+    setPhase('listening')
     // Speculative transcription: after ~0.9 s of silence, send the audio so far to Whisper.
     // If the candidate stays quiet, the text is ready when the 2 s auto-submit fires, so
     // Whisper is no longer on the waiting path. `version` goes up whenever speech resumes,
@@ -239,7 +281,7 @@ function Room({ session }: { session: InterviewSession }) {
     const recording = await recorder.done
     const captionText = captionsRef.current?.text() ?? ''
     stopCapture()
-    if (endingRef.current || !recording) return // ended, or discarded on purpose (typed / End)
+    if (endingRef.current || !recording) return // ended, or discarded on purpose (End)
 
     // If live captions caught words but the server heard nothing, use the captions.
     const fallback = captionText ? () => sendTextAnswer(session.id, captionText) : undefined
@@ -311,7 +353,9 @@ function Room({ session }: { session: InterviewSession }) {
     } catch {
       // Not fatal: the server also starts the clock on the first answer.
     }
-    void runTurn(currentText, false, chunks, null, false) // greeting: already in the transcript
+    // Fresh: the greeting is revealed as it is spoken. Resumed: the last line is already in
+    // the transcript, so it is only repeated aloud.
+    void runTurn(currentText, false, chunks, null, fresh)
   }
 
   function onDoneAnswering() {
@@ -320,14 +364,6 @@ function Room({ session }: { session: InterviewSession }) {
 
   function onSkipSpeech() {
     abortRef.current?.abort() // stop speaking; runTurn continues to listen()
-  }
-
-  function onSendTyped() {
-    const text = typed.trim()
-    if (!text) return
-    recorderRef.current?.cancel() // discard the parallel voice recording
-    setTyped('')
-    void submit(() => sendTextAnswer(session.id, text))
   }
 
   async function onEnd() {
@@ -349,204 +385,215 @@ function Room({ session }: { session: InterviewSession }) {
   const speaking = phase === 'speaking'
   const listening = phase === 'listening'
   const liveText = `${live.final} ${live.interim}`.trim()
-  const clockTone = remaining < 20 ? 'text-red-400' : remaining < 60 ? 'text-amber-300' : 'text-white'
+  const clockTone = remaining < 20 ? 'text-[#e39a86]' : remaining < 60 ? 'text-[#e2c07f]' : 'text-paper'
   const countdown = listening && vad.heard && !vad.speaking ? Math.max(0, SILENCE_MS - vad.silenceMs) : null
-  const caption = listening && liveText ? liveText : phase !== 'ready' ? currentText : ''
+  // What the interviewer is saying (revealed as it is spoken), or the last thing they said.
+  const interviewerLine = speaking && speakingText !== null ? speakingText : currentText
+  const status = speaking ? `${persona.name} is speaking`
+    : listening ? (vad.speaking ? 'Listening' : vad.heard ? 'Pause to finish your answer' : 'Your turn: answer out loud')
+    : phase === 'processing' ? 'Thinking'
+    : phase === 'ended' ? 'Interview complete'
+    : phase === 'error' ? 'Paused'
+    : 'Ready when you are'
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#070b16] text-white lg:h-screen lg:overflow-hidden">
-      {/* header */}
-      <header className="flex shrink-0 items-center gap-4 px-6 py-3">
-        <div className="flex items-center gap-2">
-          <Logo dark />
-          <span className="hidden text-xs text-ink-400 sm:inline">· {session.title}</span>
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#171614] text-paper">
+      {/* ------------------------------------------------ top bar */}
+      <header className="flex shrink-0 items-center gap-4 border-b border-white/[0.06] px-5 py-3.5 sm:px-8">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <Logo dark className="max-sm:[&>span:last-child]:hidden" />
+          <span className="hidden truncate text-sm text-ink-400 md:inline">{session.title}</span>
         </div>
-        <div className={cn('mx-auto flex items-center gap-2 rounded-full border border-white/15 px-4 py-1.5 tabular-nums', clockTone)}
-          role="timer" aria-label="Time remaining">
-          <Clock className="size-4" /> {formatClock(remaining)}
+        <div className={cn('flex items-center gap-2 font-serif text-xl tabular-nums', clockTone)} role="timer" aria-label="Time remaining">
+          <Clock className="size-4 opacity-60" /> {formatClock(remaining)}
         </div>
-        <div className="text-right text-xs">
-          <p className={cn('flex items-center justify-end gap-1.5', connection.isError ? 'text-red-400' : 'text-emerald-400')}>
-            <span className={cn('size-2 rounded-full', connection.isError ? 'bg-red-400' : 'bg-emerald-400')} />
+        <div className="flex flex-1 items-center justify-end gap-4 text-xs">
+          <span className={cn('hidden items-center gap-1.5 sm:flex', connection.isError ? 'text-[#e39a86]' : 'text-ink-400')}
+            title={connection.data != null ? `Latency ${connection.data} ms` : undefined}>
+            <span className={cn('size-1.5 rounded-full', connection.isError ? 'bg-[#e39a86]' : 'bg-brand-300')} />
             {connection.isError ? 'Server unreachable' : 'Connected'}
-          </p>
-          {connection.data != null && <p className="text-ink-400">Latency {connection.data} ms</p>}
+          </span>
+          <button type="button" onClick={() => setShowTranscript((v) => !v)} aria-pressed={showTranscript}
+            className={cn('flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm transition-colors',
+              showTranscript ? 'border-white/20 bg-white/[0.08] text-paper' : 'border-white/10 text-ink-300 hover:bg-white/[0.05]')}>
+            <ScrollText className="size-4" /> <span className="hidden sm:inline">Transcript</span>
+          </button>
         </div>
       </header>
 
-      {/* stage: fixed height on large screens; nothing inside grows the row */}
-      <main className="grid min-h-0 flex-1 gap-4 px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_360px]">
-        {/* candidate tile: always 16:9 like the camera, so the frame is never cropped into a square */}
-        <div className="flex min-h-0 items-center">
-        <section className={cn('relative aspect-video max-h-full w-full overflow-hidden rounded-2xl border-2 bg-ink-900 transition-colors',
-          listening ? 'border-emerald-400/80' : 'border-white/10')} aria-label="Your camera">
-          <video ref={videoRef} autoPlay muted playsInline className="absolute inset-0 size-full -scale-x-100 object-cover" />
-          {mediaStatus !== 'ready' && (
-            <p className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-ink-400">
-              {mediaStatus === 'audio-only' ? 'Camera off: answering by voice'
-                : mediaStatus === 'denied' || mediaStatus === 'unavailable' ? 'No microphone: answer by typing below.'
-                : 'Starting camera…'}
-            </p>
-          )}
-          <span className="absolute top-3 left-3 flex items-center gap-2 rounded-full bg-black/55 px-2.5 py-1 text-xs">
-            You
-            {listening && (
-              <span className="flex h-3 items-end gap-0.5" aria-hidden>
-                {[0.4, 0.7, 1, 0.7, 0.4].map((f, i) => (
-                  <span key={i} className="w-0.5 rounded-full bg-emerald-400 transition-all duration-75"
-                    style={{ height: `${Math.max(15, Math.min(100, level * f * 140))}%` }} />
-                ))}
-              </span>
-            )}
-          </span>
-          {caption && (
-            <p className={cn('absolute right-3 bottom-3 left-3 line-clamp-2 rounded-xl px-3 py-2 text-sm backdrop-blur',
-              listening && liveText ? 'bg-emerald-950/70' : 'bg-black/60')} aria-live="polite">
-              {/* Show the end of long live captions, like TV subtitles */}
-              {listening && liveText ? liveText.slice(-160) : caption}
-            </p>
-          )}
-        </section>
-        </div>
-
-        {/* interviewer tile */}
-        <div className="flex min-h-0 items-center">
-        <section className={cn('relative flex aspect-video max-h-full w-full flex-col items-center justify-center overflow-hidden rounded-2xl border-2',
-          'bg-[radial-gradient(circle_at_50%_40%,#1d3b8a_0%,#0b1430_55%,#070b16_100%)] transition-colors',
-          speaking ? 'border-brand-500 shadow-[0_0_40px_-8px] shadow-brand-500' : 'border-white/10')} aria-label="Interviewer">
-          <div className="relative">
-            {speaking && <span className="absolute inset-0 animate-ping rounded-full bg-brand-500/30" />}
-            <div className={cn('relative flex size-28 items-center justify-center rounded-full bg-gradient-to-br text-4xl font-semibold transition-transform duration-300',
-              persona.color, speaking && 'scale-105')}>
-              {persona.name[0]}
+      <div className="relative flex min-h-0 flex-1">
+        {/* ------------------------------------------------ stage */}
+        <main className="relative flex min-w-0 flex-1 flex-col items-center justify-center px-6 pt-6 pb-40 sm:px-12">
+          {/* interviewer presence: a quiet ring breathes while they speak */}
+          <div className="relative flex items-center justify-center">
+            <span className={cn('absolute size-44 rounded-full border transition-all duration-700',
+              speaking ? 'scale-100 animate-[pulse_2.4s_ease-in-out_infinite] border-brand-300/40' : 'scale-90 border-transparent')} aria-hidden />
+            <span className={cn('absolute size-36 rounded-full bg-brand-500/10 transition-all duration-500',
+              speaking ? 'scale-100 opacity-100' : 'scale-75 opacity-0')} aria-hidden />
+            <div className={cn('relative transition-transform duration-500', speaking && 'scale-[1.04]')}>
+              <Avatar persona={persona.id} size="lg" />
             </div>
           </div>
-          <p className="mt-4 text-lg font-semibold">{persona.name}</p>
-          <p className="text-sm text-ink-200">{persona.style} · AI interviewer</p>
-          {session.config.topic && (
-            <span className="mt-3 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs">{session.config.topic}</span>
-          )}
-          <p className="absolute bottom-4 text-xs text-ink-400">
-            {speaking ? 'Speaking…' : phase === 'processing' ? 'Thinking…' : listening ? 'Listening to you' : ''}
+          <p className="mt-6 font-serif text-2xl font-semibold">{persona.name}</p>
+          <p className="mt-1 flex items-center gap-2 text-sm text-ink-400" aria-live="polite">
+            {phase === 'processing' && <Loader2 className="size-3.5 animate-spin" />}
+            {status}
+            {voice && !voice.natural && <span title={voice.label}>· browser voice</span>}
           </p>
-          {voice && (
-            <p className="absolute top-3 right-3 flex items-center gap-1 text-[10px] text-ink-400" title={voice.label}>
-              <Volume2 className="size-3" /> {voice.natural ? 'Natural voice' : 'Browser voice'}
-            </p>
-          )}
-        </section>
-        </div>
 
-        {/* transcript: scrolls inside; never grows the layout */}
-        <aside className="flex h-80 min-h-0 flex-col rounded-2xl border border-white/10 bg-white/[0.03] lg:h-full" aria-label="Live transcript">
-          <p className="shrink-0 border-b border-white/10 px-4 py-3 text-sm font-semibold">Live transcript</p>
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-            {messages.map((m, i) => (
-              <div key={i} className={cn('rounded-xl px-3 py-2 text-sm',
-                m.role === 'interviewer' ? 'bg-brand-500/15' : 'ml-6 bg-white/[0.06]')}>
-                <p className="mb-0.5 text-[10px] font-medium tracking-wide text-ink-400 uppercase">
-                  {m.role === 'interviewer' ? persona.name : 'You'}
-                </p>
-                {m.text}
-              </div>
-            ))}
-            {speaking && speakingText !== null && (
-              <div className="rounded-xl border border-brand-500/40 bg-brand-500/15 px-3 py-2 text-sm" aria-live="polite">
-                <p className="mb-0.5 text-[10px] font-medium tracking-wide text-ink-400 uppercase">{persona.name} · speaking</p>
-                {speakingText || <span className="text-ink-400 italic">…</span>}
-              </div>
+          {/* the conversation, as captions */}
+          <div className="mt-10 w-full max-w-3xl text-center">
+            {speaking && streaming ? (
+              // Streams word by word, in step with the voice.
+              <p className="font-serif text-xl leading-snug text-paper sm:text-[1.75rem]">
+                <StreamingLine key={streaming.id} before={streaming.before} text={streaming.text} durationSec={streaming.durationSec} />
+              </p>
+            ) : speaking || (phase === 'processing' && !interviewerLine) ? (
+              // About to speak (voice still buffering): a quiet "typing" indicator.
+              <p className="flex h-10 items-center justify-center gap-1.5" aria-label={`${persona.name} is about to speak`}>
+                {[0, 150, 300].map((d) => (
+                  <span key={d} className="size-2 animate-bounce rounded-full bg-brand-300/80" style={{ animationDelay: `${d}ms` }} />
+                ))}
+              </p>
+            ) : interviewerLine && phase !== 'ready' && (
+              <p className={cn('font-serif leading-snug transition-colors duration-300',
+                listening || phase === 'processing' ? 'text-lg text-ink-400 sm:text-xl' : 'text-xl text-paper sm:text-[1.75rem]')}>
+                {interviewerLine}
+              </p>
             )}
-            {(listening || phase === 'processing') && liveText && (
-              <div className="ml-6 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-sm" aria-live="polite">
-                <p className="mb-0.5 text-[10px] font-medium tracking-wide text-emerald-300 uppercase">
-                  You · {phase === 'processing' ? 'finalising…' : 'live'}
-                </p>
-                {live.final}{' '}
-                <span className="text-ink-400 italic">{live.interim}</span>
-              </div>
+            {(listening || phase === 'processing') && (
+              <p className="mx-auto mt-6 min-h-[3.5rem] max-w-2xl text-lg leading-relaxed text-paper" aria-live="polite">
+                {liveText ? (
+                  <>{live.final.slice(-200)} <span className="text-ink-400">{live.interim}</span></>
+                ) : listening ? (
+                  <span className="text-ink-500">{liveCaptionsSupported() ? 'Your words will appear here as you speak.' : 'Speak your answer; it is transcribed when you pause.'}</span>
+                ) : null}
+              </p>
             )}
-            {phase === 'processing' && (
-              <p className="flex items-center gap-2 text-xs text-ink-400"><Loader2 className="size-3 animate-spin" /> Transcribing and thinking…</p>
-            )}
-            <div ref={transcriptEnd} />
           </div>
-        </aside>
-      </main>
 
-      {/* controls: fixed-height slots so the stage above never resizes */}
-      <footer className="shrink-0 px-6 pt-3 pb-4">
-        <div className="flex h-6 items-center justify-center text-sm" role="status">
-          {countdown !== null ? (
-            <span className="flex items-center gap-2 text-emerald-300">
-              <span className="h-1.5 w-32 overflow-hidden rounded-full bg-white/10">
-                <span className="block h-full rounded-full bg-emerald-400 transition-[width] duration-75"
-                  style={{ width: `${100 - (countdown / SILENCE_MS) * 100}%` }} />
-              </span>
-              Sending in {(countdown / 1000).toFixed(1)}s. Keep talking to continue.
+          {/* self view: small, like a video call, never the focus */}
+          <section className={cn('absolute top-4 right-4 aspect-video w-28 overflow-hidden rounded-2xl border bg-[#201f1c] shadow-[0_8px_30px_rgb(0_0_0/0.35)] transition-colors sm:top-auto sm:right-8 sm:bottom-28 sm:w-60',
+            listening ? 'border-brand-300/60' : 'border-white/[0.08]')} aria-label="Your camera">
+            <video ref={videoRef} autoPlay muted playsInline className="absolute inset-0 size-full -scale-x-100 object-cover" />
+            {mediaStatus !== 'ready' && (
+              <p className="absolute inset-0 flex items-center justify-center p-3 text-center text-xs text-ink-400">
+                {mediaStatus === 'audio-only' ? 'Camera off' : mediaStatus === 'pending' ? 'Starting camera…' : 'No camera'}
+              </p>
+            )}
+            <span className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-full bg-[#171614]/75 px-2 py-0.5 text-[11px]">
+              You
+              {listening && (
+                <span className="flex h-2.5 items-end gap-0.5" aria-hidden>
+                  {[0.5, 0.8, 1, 0.8, 0.5].map((f, i) => (
+                    <span key={i} className="w-0.5 rounded-full bg-brand-300 transition-all duration-75"
+                      style={{ height: `${Math.max(20, Math.min(100, level * f * 140))}%` }} />
+                  ))}
+                </span>
+              )}
             </span>
-          ) : notice ? (
-            <span className="text-amber-300">{notice}</span>
-          ) : listening && !liveCaptionsSupported() && stream ? (
-            <span className="text-ink-400">Live captions need Chrome or Edge. Your answer is still transcribed when you finish.</span>
-          ) : null}
-        </div>
-        <div className="mt-2 flex h-11 items-center justify-center">
-          {showTyping && listening && (
-            <form onSubmit={(e) => { e.preventDefault(); onSendTyped() }} className="flex w-full max-w-2xl gap-2">
-              <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Type your answer…" aria-label="Typed answer"
-                className="flex-1 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm placeholder:text-ink-400 focus:border-brand-500 focus:outline-none" />
-              <button type="submit" className="flex items-center gap-1.5 rounded-full bg-brand-600 px-4 py-2 text-sm font-medium hover:bg-brand-700">
-                <Send className="size-4" /> Send
+          </section>
+
+          {/* ------------------------------------------------ control dock */}
+          <footer className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 px-4 pb-6">
+            <div className="flex h-5 items-center text-sm" role="status">
+              {countdown !== null ? (
+                <span className="flex items-center gap-2.5 text-brand-300">
+                  <span className="h-1 w-24 overflow-hidden rounded-full bg-white/10">
+                    <span className="block h-full rounded-full bg-brand-300 transition-[width] duration-75"
+                      style={{ width: `${100 - (countdown / SILENCE_MS) * 100}%` }} />
+                  </span>
+                  Sending in {(countdown / 1000).toFixed(1)}s · keep talking to continue
+                </span>
+              ) : notice ? (
+                <span className="max-w-xl text-center text-[#e2c07f]">{notice}</span>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-[#201f1c] p-2 shadow-[0_10px_40px_rgb(0_0_0/0.35)]">
+              {phase === 'ready' && (
+                <button onClick={() => void onStart()} disabled={mediaStatus === 'pending'}
+                  className="rounded-full bg-paper px-7 py-3 font-medium text-ink-900 transition-[background-color,transform] hover:-translate-y-px hover:bg-white disabled:opacity-60">
+                  {session.messages.length > 1 ? 'Resume interview' : 'Start interview'}
+                </button>
+              )}
+              {speaking && (
+                <button onClick={onSkipSpeech} className="flex items-center gap-2 rounded-full px-5 py-3 text-sm text-ink-300 transition-colors hover:bg-white/[0.06] hover:text-paper">
+                  <SkipForward className="size-4" /> Skip to my answer
+                </button>
+              )}
+              {listening && stream && (
+                <button onClick={onDoneAnswering}
+                  className="flex items-center gap-2 rounded-full bg-brand-500 px-6 py-3 font-medium text-ink-900 transition-[background-color,transform] hover:-translate-y-px hover:bg-brand-300">
+                  <Mic className="size-4" /> I&apos;m done
+                </button>
+              )}
+              {phase === 'processing' && (
+                <span className="flex items-center gap-2 px-5 py-3 text-sm text-ink-300">
+                  <Loader2 className="size-4 animate-spin" /> Thinking…
+                </span>
+              )}
+              {phase === 'error' && (
+                stream
+                  ? <button onClick={() => void listen()} className="rounded-full bg-paper px-6 py-3 text-sm font-medium text-ink-900">Try again</button>
+                  : <button onClick={() => window.location.reload()} className="rounded-full bg-paper px-6 py-3 text-sm font-medium text-ink-900">Reload</button>
+              )}
+              {phase === 'ended' && (
+                <Link to={`/interviews/${session.id}/report`} className="rounded-full bg-paper px-6 py-3 text-sm font-medium text-ink-900 transition-colors hover:bg-white">View report</Link>
+              )}
+              {!['ended', 'ready'].includes(phase) && (
+                <>
+                  <span className="mx-1 h-6 w-px bg-white/10" aria-hidden />
+                  <button onClick={onEnd} disabled={phase === 'processing'} aria-label="End interview" title="End interview"
+                    className="flex size-11 items-center justify-center rounded-full bg-[#e39a86]/15 text-[#e39a86] transition-colors hover:bg-[#e39a86]/25 disabled:opacity-40">
+                    <PhoneOff className="size-4" />
+                  </button>
+                </>
+              )}
+            </div>
+            <p className="hidden text-center text-xs text-ink-500 sm:block">
+              Answer out loud. Two seconds of silence sends your answer. Your camera stays on your device.
+            </p>
+          </footer>
+        </main>
+
+        {/* ------------------------------------------------ transcript drawer */}
+        {showTranscript && (
+          <aside className="absolute inset-0 z-10 flex min-h-0 flex-col border-l border-white/[0.06] bg-[#1c1b18] sm:static sm:w-[380px] sm:shrink-0" aria-label="Transcript">
+            <div className="flex shrink-0 items-center justify-between border-b border-white/[0.06] px-6 py-4">
+              <p className="font-serif text-lg font-semibold">Transcript</p>
+              <button type="button" onClick={() => setShowTranscript(false)} aria-label="Close transcript"
+                className="rounded-full p-1.5 text-ink-400 transition-colors hover:bg-white/[0.06] hover:text-paper">
+                <X className="size-4" />
               </button>
-            </form>
-          )}
-        </div>
-        <div className="mt-2 flex h-12 flex-wrap items-center justify-center gap-3">
-          {phase === 'ready' && (
-            <button onClick={() => void onStart()} disabled={mediaStatus === 'pending'}
-              className="rounded-full bg-brand-600 px-8 py-3 font-medium shadow-lg shadow-brand-600/30 hover:bg-brand-700 disabled:opacity-60">
-              {session.messages.length > 1 ? 'Resume interview' : 'Start interview'}
-            </button>
-          )}
-          {speaking && (
-            <button onClick={onSkipSpeech} className="flex items-center gap-2 rounded-full border border-white/20 px-6 py-3 text-sm hover:bg-white/5">
-              <SkipForward className="size-4" /> Skip to my answer
-            </button>
-          )}
-          {listening && stream && (
-            <button onClick={onDoneAnswering}
-              className="flex items-center gap-2 rounded-full bg-emerald-600 px-6 py-3 font-medium shadow-lg shadow-emerald-600/30 hover:bg-emerald-700">
-              <Mic className="size-4" /> I&apos;m done answering
-            </button>
-          )}
-          {phase === 'processing' && (
-            <span className="flex items-center gap-2 rounded-full border border-white/15 px-6 py-3 text-sm text-ink-200">
-              <Loader2 className="size-4 animate-spin" /> Thinking…
-            </span>
-          )}
-          {phase === 'error' && (
-            <button onClick={() => void listen()} className="rounded-full bg-brand-600 px-6 py-3 text-sm font-medium">Try again</button>
-          )}
-          {phase === 'ended' && (
-            <Link to={`/interviews/${session.id}/report`} className="rounded-full bg-brand-600 px-6 py-3 text-sm font-medium">View report</Link>
-          )}
-          {listening && !showTyping && (
-            <button onClick={() => setShowTyping(true)} className="flex items-center gap-2 rounded-full px-4 py-3 text-sm text-ink-200 hover:bg-white/5">
-              <Keyboard className="size-4" /> Type instead
-            </button>
-          )}
-          {!['ended', 'ready'].includes(phase) && (
-            <button onClick={onEnd} disabled={phase === 'processing'}
-              className="flex items-center gap-2 rounded-full border border-red-400/60 px-6 py-3 text-sm text-red-300 hover:bg-red-500/10 disabled:opacity-40">
-              <PhoneOff className="size-4" /> End
-            </button>
-          )}
-        </div>
-        <p className="mt-2 text-center text-xs text-ink-400">
-          Answer out loud. After 2 seconds of silence your answer is sent automatically. Your camera stays on your device.
-          {liveCaptionsSupported() && ' Live captions are produced by your browser’s speech service.'}
-        </p>
-      </footer>
+            </div>
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
+              {messages.map((m, i) => (
+                <div key={i} className={cn('text-sm leading-relaxed', m.role === 'candidate' && 'border-l-2 border-brand-500/50 pl-4')}>
+                  <p className="mb-1 text-[11px] font-medium tracking-[0.12em] text-ink-500 uppercase">
+                    {m.role === 'interviewer' ? persona.name : 'You'}
+                  </p>
+                  <p className={m.role === 'interviewer' ? 'text-paper' : 'text-ink-300'}>{m.text}</p>
+                </div>
+              ))}
+              {speaking && speakingText && (
+                <div className="text-sm leading-relaxed">
+                  <p className="mb-1 text-[11px] font-medium tracking-[0.12em] text-brand-300 uppercase">{persona.name} · speaking</p>
+                  <p className="text-paper">{speakingText}</p>
+                </div>
+              )}
+              {(listening || phase === 'processing') && liveText && (
+                <div className="border-l-2 border-brand-500/50 pl-4 text-sm leading-relaxed">
+                  <p className="mb-1 text-[11px] font-medium tracking-[0.12em] text-brand-300 uppercase">
+                    You · {phase === 'processing' ? 'finalising' : 'live'}
+                  </p>
+                  <p className="text-ink-300">{live.final} <span className="text-ink-500">{live.interim}</span></p>
+                </div>
+              )}
+              <div ref={transcriptEnd} />
+            </div>
+          </aside>
+        )}
+      </div>
     </div>
   )
 }

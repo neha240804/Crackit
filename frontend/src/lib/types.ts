@@ -60,14 +60,110 @@ export interface CandidateProfile {
 
 export type ResumeStatus = 'processing' | 'ready' | 'failed'
 
+export type ResumePurpose = 'interview' | 'ats'
+
 export interface Resume {
   id: string
   filename: string
   status: ResumeStatus
   error: string | null
   is_primary: boolean
+  purpose: ResumePurpose
   created_at: string
   profile: CandidateProfile | null
+}
+
+// ---------------------------------------------------------------- ATS check + optimizer
+export interface JDAnalysis {
+  title: string | null
+  company: string | null
+  seniority: string
+  min_years_experience: number | null
+  must_have_skills: string[]
+  nice_to_have_skills: string[]
+  responsibilities: string[]
+  keywords: string[]
+}
+
+export interface AtsRuleResult {
+  id: string
+  label: string
+  passed: boolean
+  weight: number
+  detail: string
+}
+
+export interface KeywordMatch {
+  score: number
+  matched_must: string[]
+  missing_must: string[]
+  matched_nice: string[]
+  missing_nice: string[]
+  matched_keywords: string[]
+  missing_keywords: string[]
+}
+
+export interface GapItem {
+  skill: string
+  status: 'implied' | 'missing'
+  evidence_source_ids: string[]
+  explanation: string
+  suggestion: string
+}
+
+export interface AnalysisResult {
+  ats: { score: number; rules: AtsRuleResult[] }
+  jd: JDAnalysis | null
+  match: KeywordMatch | null
+  gaps: { gaps: GapItem[]; strengths: string[]; summary: string } | null
+  overall_score: number
+}
+
+export interface OptimizedBullet {
+  text: string
+  source_ids: string[]
+}
+
+export interface OptimizedEntry {
+  source_id: string
+  heading: string
+  subheading: string | null
+  bullets: OptimizedBullet[]
+}
+
+export interface OptimizedResume {
+  summary: string
+  summary_source_ids: string[]
+  skills: string[]
+  experience: OptimizedEntry[]
+  projects: OptimizedEntry[]
+}
+
+export interface VerificationIssue {
+  location: string
+  text: string
+  problem: string
+}
+
+export interface Verification {
+  attempts: number
+  issues_per_attempt: number[]
+  history: { attempt: number; issues: VerificationIssue[] }[]
+  reverted: { location: string; rewritten: string; replaced_with: string | null }[]
+  removed_skills: string[]
+  verified: boolean
+}
+
+export interface ResumeVersion {
+  id: string
+  resume_id: string
+  created_at: string
+  job_title: string | null
+  overall_score: number | null
+  verified: boolean
+  content: OptimizedResume
+  analysis: AnalysisResult
+  verification: Verification
 }
 
 // ---------------------------------------------------------------- mock interview
@@ -83,6 +179,7 @@ export interface InterviewConfig {
   duration_minutes: 5 | 10 | 15
   interviewer: InterviewerId
   jd_text: string | null
+  resume_id: string | null // resume / jd formats: which interview resume to ask about
 }
 
 export interface InterviewMessage {
