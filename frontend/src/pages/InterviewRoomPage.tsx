@@ -390,7 +390,7 @@ function Room({ session }: { session: InterviewSession }) {
   // What the interviewer is saying (revealed as it is spoken), or the last thing they said.
   const interviewerLine = speaking && speakingText !== null ? speakingText : currentText
   const status = speaking ? `${persona.name} is speaking`
-    : listening ? (vad.speaking ? 'Listening' : vad.heard ? 'Pause to finish your answer' : 'Your turn: answer out loud')
+    : listening ? (vad.heard ? 'Listening' : 'Your turn: answer out loud')
     : phase === 'processing' ? 'Thinking'
     : phase === 'ended' ? 'Interview complete'
     : phase === 'error' ? 'Paused'
@@ -551,7 +551,7 @@ function Room({ session }: { session: InterviewSession }) {
               )}
             </div>
             <p className="hidden text-center text-xs text-ink-500 sm:block">
-              Answer out loud. Two seconds of silence sends your answer. Your camera stays on your device.
+              Answer out loud. A 2-second pause sends your answer. Your camera never leaves this device.
             </p>
           </footer>
         </main>

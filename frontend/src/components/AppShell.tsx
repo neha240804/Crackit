@@ -11,9 +11,11 @@ import { buttonClass } from '@/components/ui/styles'
 import { useAuth } from '@/features/auth/context'
 import { cn } from '@/lib/utils'
 
+// `short` is shown on phones, where three full labels plus the account buttons don't fit.
 const NAV = [
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/resume', label: 'ATS check' },
+  { to: '/dashboard', label: 'Dashboard', short: 'Home' },
+  { to: '/resume', label: 'ATS check', short: 'ATS' },
+  { to: '/prep', label: 'Question prep', short: 'Prep' },
 ]
 
 export function AppShell() {
@@ -25,13 +27,13 @@ export function AppShell() {
           {/* phones: just the round mark, so the nav and account buttons fit on one line */}
           <Link to="/dashboard" aria-label="MockInterview home"><Logo className="max-sm:[&>span:last-child]:hidden" /></Link>
           <nav className="flex items-center gap-1 sm:gap-5" aria-label="Main">
-            {NAV.map(({ to, label }) => (
+            {NAV.map(({ to, label, short }) => (
               <NavLink key={to} to={to} className={({ isActive }) => cn(
                 'relative px-1.5 py-1 text-sm transition-colors',
                 isActive
                   ? 'font-medium text-ink-900 after:absolute after:inset-x-1.5 after:-bottom-[21px] after:h-px after:bg-ink-900'
                   : 'text-ink-500 hover:text-ink-900')}>
-                {label}
+                <span className="sm:hidden">{short}</span><span className="hidden sm:inline">{label}</span>
               </NavLink>
             ))}
           </nav>

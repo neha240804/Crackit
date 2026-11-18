@@ -1,7 +1,7 @@
 // Public landing page: editorial layout, warm paper, one sage accent, serif headlines.
 // Logged-in visitors go straight to the dashboard.
 
-import { ArrowRight, AudioLines, Captions, Gauge, MessageSquareQuote, RotateCcw, Route } from 'lucide-react'
+import { ArrowRight, AudioLines, Captions, FileSearch, Gauge, MessageSquareQuote, Route } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link, Navigate } from 'react-router'
 
@@ -9,7 +9,8 @@ import { Avatar, Logo } from '@/components/Brand'
 import { Card, Eyebrow } from '@/components/ui'
 import { buttonClass } from '@/components/ui/styles'
 import { useAuth } from '@/features/auth/context'
-import { INTERVIEWERS } from '@/features/interview/constants'
+import { FORMAT_TONE, INTERVIEWERS } from '@/features/interview/constants'
+import { cn } from '@/lib/utils'
 
 const TYPES = [
   ['Any topic', 'Machine learning, React, SQL, system design. You choose the subject.'],
@@ -24,12 +25,16 @@ const FEATURES: { icon: typeof AudioLines; title: string; text: string }[] = [
   { icon: Route, title: 'Follow-ups with intent', text: 'Strong answers lead deeper. When you are stuck, it explains the idea and moves on.' },
   { icon: Captions, title: 'Live captions', text: 'Your words appear as you speak; the interviewer’s appear as they are said.' },
   { icon: Gauge, title: 'Feedback you can use', text: 'Scores for every question, a model answer, and your pace and filler words, measured.' },
-  { icon: RotateCcw, title: 'Resumable sessions', text: '5, 10 or 15 minutes. Close the tab by accident and you continue where you left off.' },
+  { icon: FileSearch, title: 'ATS resume check', text: 'See how a screening system scores your resume against a job, what is missing, and what to fix first.' },
 ]
+
+// Quiet per-format tones (sage, clay, mist, honey) for icons and numbers.
+const TONES = Object.values(FORMAT_TONE).map((t) => t.chip)
+const NUMBER_TONES = ['text-brand-600', 'text-clay-600', 'text-mist-600', 'text-warning-600']
 
 const STEPS = [
   ['Choose', 'Pick a topic, your resume, a job post or behavioral questions. Set the level, the length and who interviews you.'],
-  ['Converse', 'The interviewer asks, listens and follows up on what you said. Speak naturally, or type if you prefer.'],
+  ['Converse', 'The interviewer asks, listens and follows up on what you said. Just speak naturally; a short pause hands the turn back.'],
   ['Review', 'Read a clear report: what was strong, what was missing, and what a great answer would have covered.'],
 ]
 
@@ -127,7 +132,7 @@ export function LandingPage() {
         <Container className="grid sm:grid-cols-2 lg:grid-cols-4">
           {TYPES.map(([title, text], i) => (
             <div key={title} className="border-ink-200/80 py-10 sm:px-8 sm:first:pl-0 lg:border-l lg:first:border-l-0 [&:nth-child(n+3)]:border-t sm:[&:nth-child(n+3)]:border-t lg:[&:nth-child(n+3)]:border-t-0 [&:nth-child(2)]:border-t sm:[&:nth-child(2)]:border-t-0">
-              <p className="font-serif text-sm text-brand-600">0{i + 1}</p>
+              <p className={cn('font-serif text-sm', NUMBER_TONES[i])}>0{i + 1}</p>
               <p className="mt-3 font-serif text-xl font-semibold">{title}</p>
               <p className="mt-2 text-sm leading-relaxed text-ink-500">{text}</p>
             </div>
@@ -164,9 +169,9 @@ export function LandingPage() {
             <h2 className="mt-5 text-4xl leading-tight font-semibold sm:text-5xl">Built to feel like the real thing.</h2>
           </div>
           <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {FEATURES.map(({ icon: Icon, title, text }) => (
+            {FEATURES.map(({ icon: Icon, title, text }, i) => (
               <Card key={title} className="card-hover p-7">
-                <span className="flex size-10 items-center justify-center rounded-full bg-brand-50 text-brand-700"><Icon className="size-[18px]" aria-hidden /></span>
+                <span className={cn('flex size-10 items-center justify-center rounded-full', TONES[i % TONES.length])}><Icon className="size-[18px]" aria-hidden /></span>
                 <p className="mt-6 font-serif text-xl font-semibold">{title}</p>
                 <p className="mt-2 text-[0.94rem] leading-relaxed text-ink-500">{text}</p>
               </Card>
@@ -255,7 +260,7 @@ export function LandingPage() {
       <footer className="border-t border-ink-200/80">
         <Container className="flex flex-col gap-4 py-10 text-sm text-ink-400 sm:flex-row sm:items-center sm:justify-between">
           <Logo />
-          <p>Voice interviews powered by FastAPI, LangGraph, Groq and Kokoro.</p>
+          <p>Practise out loud. Improve with every session.</p>
         </Container>
       </footer>
     </div>

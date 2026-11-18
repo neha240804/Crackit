@@ -5,7 +5,8 @@ Real-time **voice mock interviews**. Split out of the CareerPilot AI project
 landing page, accounts, the interview room and feedback reports, plus an **ATS resume
 check** (ported from CareerPilot's optimizer). Resumes have a `purpose`: **interview**
 resumes (uploaded on the New Interview page for resume-/JD-based interviews) and **ats**
-resumes (the ATS checker) are separate lists by design.
+resumes (the ATS checker) are separate lists by design. **Question prep** (`/prep`) gives
+students study sets of interview questions with model answers, grounded in the question bank.
 
 ## Main goal
 
@@ -17,7 +18,7 @@ interviewer, not a chatbot reading predefined questions:
   when answers are good, and **moves on** when the candidate is struggling.
 - Interview types: **topic** (any subject), **resume-based**, **job-description-based**,
   **HR & behavioral**. Levels: fresher, 1-3, 3-5, 5+ years. Durations: 5/10/15 min.
-  Interviewers: Maya, Arjun, Sara (own names, initials avatars, no real people).
+  Interviewers: Maya, Arjun, Sara (own names, illustrated faceless portraits, no real people).
 - Time-boxed, resumable after a refresh, and ends with a **scored feedback report**
   (per question + communication metrics).
 - **Free to run**: Groq free tier for LLM + Whisper; voice generated locally with Kokoro.
@@ -52,6 +53,10 @@ listen: AnswerRecorder (VAD) + LiveCaptions
   ~0.9 s silence ─── POST /{id}/transcribe ────────► Whisper only (speculative, no state change)
   2.0 s silence  ─── POST /{id}/answer (text|audio) ► graph resumes: listen → interviewer → listen ⏸
 End ─────────────── POST /{id}/end ────────────────► closing → END
+/prep ────────────── GET /prep/tracks ─────────────► tracks + subtopics parsed from knowledge_base/questions
+                     POST /prep/questions ─────────► RAG (question bank) + 1 fast-LLM call → questions with answers
+                     POST /prep/questions {resume_id} ► resume sources → likely questions about YOUR resume
+                                                        (first-person answers from resume facts, [placeholders] for gaps)
 Report page ─────── POST /{id}/report ─────────────► build_report (strong LLM + code metrics), cached
 ```
 
@@ -116,6 +121,7 @@ build_report(): separate function, called after the interview
 | `backend/app/agents/profile/graph.py`, `sources.py` | Resume parsing graph; resume → numbered sources for the interviewer |
 | `backend/app/services/resume_service.py`, `api/v1/resumes.py` | Resume upload / list / primary / reparse / delete |
 | `backend/app/agents/optimizer/*`, `services/optimizer_service.py`, `api/v1/optimizer.py` | ATS check + fact-checked rewrite, versions, DOCX export (`services/docx_render.py`) |
+| `backend/app/services/prep_service.py`, `api/v1/prep.py`, `schemas/prep.py` | Question prep: tracks from the KB, study-set generation (strict `PrepSet` schema), resume mode (`resume_id`), `is_repeat()` drops reworded repeats in code (word overlap ≥ 0.6; the prompt alone kept re-asking). Nothing stored server-side |
 | `backend/app/agents/common/llm.py` | `get_llm` / `get_structured_llm` (strict json_schema, model fallback) |
 | `backend/app/core/http.py` | Shared Groq HTTP pool (120 s keep-alive) |
 | `backend/app/rag/knowledge_base.py` + `knowledge_base/` | Question banks and rubrics, re-indexed at startup |
@@ -130,11 +136,12 @@ build_report(): separate function, called after the interview
 | `frontend/src/pages/NewInterviewPage.tsx` | Device checks (fixed column) + interview settings (only this card scrolls on lg); reads `?type=` and `?topic=`; resume/JD formats pick or upload an interview resume (`features/resume/InterviewResumePicker.tsx`) and send `resume_id` |
 | `frontend/src/pages/InterviewRoomPage.tsx` | Full-screen "stage": interviewer centre, captions, small self-view, transcript drawer, bottom dock. Voice only (no typed answers). Phase machine `ready → speaking → listening → processing → …` |
 | `frontend/src/pages/InterviewReportPage.tsx` | Feedback report |
-| `frontend/src/pages/ResumePage.tsx` (`/resume`, nav "ATS check") | Upload/select resume + optional JD → ATS report (`features/ats/AtsReport.tsx`: score, action plan, keywords, gaps, format checks) or optimized version (`OptimizedVersion.tsx`, DOCX) |
+| `frontend/src/pages/ResumePage.tsx` (`/resume`, nav "ATS check") | Check only: upload/select an ATS resume + optional JD → `POST /optimizer/analyze` → report (`features/ats/AtsReport.tsx`: score, action plan, missing keywords, gaps, format checks). The backend rewrite/DOCX endpoints still exist but have no UI |
+| `frontend/src/pages/PrepPage.tsx` (`/prep`, nav "Question prep") | Mode switch (two equal choice cards "By topic" / "From your resume") above ONE setup panel for the chosen mode, with a single action → study set; answers hidden until revealed, Got it / Review again marks, progress, "More questions", link to a mock interview. Sets saved in localStorage (`features/prep/api.ts`) |
 | `frontend/src/features/interview/media.ts` | Camera/mic, `AnswerRecorder` (VAD), `LiveCaptions`, `speak()` (server voice + adaptive buffering, browser fallback) |
 | `frontend/src/features/interview/api.ts` | API calls; converts `remaining_seconds` to `deadline_ms` outside render |
 | `frontend/src/components/AppShell.tsx`, `Brand.tsx` | Top bar layout, logo, score card; `Avatar` = original faceless SVG portraits per interviewer (maya / arjun / sara) |
-| `frontend/src/index.css` | Design tokens: `paper` (warm off-white), `brand-*` (sage), `ink-*` (warm neutrals), success/warning/danger; Fraunces serif headings + Inter. No gradients or glass effects |
+| `frontend/src/index.css` | Design tokens: `paper` (warm off-white), `brand-*` (sage), quiet `clay-*` / `mist-*` secondary tones (per-format `FORMAT_TONE` in `features/interview/constants.ts`), `ink-*` (warm neutrals), success/warning/danger; Fraunces serif headings + Inter. No gradients or glass effects |
 | `frontend/src/components/ui/styles.ts` | `buttonClass()` / `fieldClass` (kept out of `.tsx` so Fast Refresh works) |
 
 ### Voice pipeline (latency-critical)
@@ -180,6 +187,8 @@ https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1 (full 
 - Backend: `uv run pytest` and `uv run ruff check app tests` (from `backend/`).
   Interview tests: `backend/tests/test_interview_unit.py`; auth/parsing/chunking: `test_unit.py`.
 - Frontend: `npm run build` (type-check + bundle) and `npm run lint` (from `frontend/`).
+- **Prompts reference:** `docs/PROMPTS.md` lists every LLM prompt, generated from the source by
+  `uv run python scripts/export_prompts.py` (from `backend/`, with `PYTHONPATH=.`). Re-run it after editing a prompt.
 - Behaviour checks are done by scripting real interviews over HTTP (answers spaced ~10-15 s
   apart, to stay realistic and under the free-tier per-minute limit).
 

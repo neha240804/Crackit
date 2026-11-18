@@ -9,6 +9,7 @@ import { Card, ErrorAlert, Eyebrow, Spinner } from '@/components/ui'
 import { buttonClass } from '@/components/ui/styles'
 import { useAuth } from '@/features/auth/context'
 import { useInterviews } from '@/features/interview/api'
+import { FORMAT_TONE } from '@/features/interview/constants'
 import { useResumes } from '@/features/resume/api'
 import type { InterviewType } from '@/lib/types'
 import { cn, formatDate } from '@/lib/utils'
@@ -27,7 +28,7 @@ const MODES: { type: InterviewType; icon: typeof BookOpen; title: string; text: 
 // Product facts shown below the fold. Every number here is a real setting of this app.
 const FACTS: [string, string][] = [
   ['2 s', 'of silence hands the turn back, like a real conversation'],
-  ['0.9 s', 'of silence and your answer is already being transcribed, before you finish'],
+  ['0.9 s', 'into a pause, your answer is already being transcribed, so replies come quickly'],
   ['4', 'interview styles, at fresher to 5+ years level'],
   ['0', 'camera frames ever leave your browser'],
 ]
@@ -36,8 +37,11 @@ const PILLARS = [
   { icon: AudioLines, title: 'A voice, not a chatbot', text: 'A natural neural voice speaks each line as it is ready, and your answer is captioned live as you talk. No typing, no buttons between turns.' },
   { icon: MessagesSquare, title: 'It listens to what you said', text: 'Each reply judges your last answer: credit when you are right, a one-line correction when you are not, a deeper follow-up when you are on a roll.' },
   { icon: Gauge, title: 'Feedback you can measure', text: 'Every question is scored with a model answer. Pace, filler words and answer length are counted in code, not guessed.' },
-  { icon: ShieldCheck, title: 'Honest by design', text: 'Topic switches, timing and metrics are rules in code. The ATS optimizer never invents a skill or a number; every line is fact-checked.' },
+  { icon: ShieldCheck, title: 'Honest by design', text: 'Topic switches, timing and speaking metrics are fixed rules, not guesses. The ATS score works the same way: every lost point comes with a reason.' },
 ]
+
+// Icon badge tints, cycled across cards: the palette's quiet tones, never one colour shouting.
+const TONES = Object.values(FORMAT_TONE).map((t) => t.chip)
 
 const TIPS = [
   ['Think out loud', 'Interviewers grade reasoning, not just answers. Say what you are weighing before you decide.'],
@@ -87,12 +91,13 @@ export function DashboardPage() {
       {active.length > 0 && (
         <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-3 rounded-2xl border border-warning-600/20 bg-warning-50 px-6 py-5">
           <p className="text-sm font-medium text-warning-700">Unfinished interview{active.length > 1 ? 's' : ''}</p>
-          {active.map((i) => (
+          {active.slice(0, 3).map((i) => (
             <Link key={i.id} to={`/interviews/${i.id}`}
               className="inline-flex items-center gap-2 rounded-full border border-ink-200 bg-white px-4 py-1.5 text-sm font-medium text-ink-700 transition-colors hover:border-ink-300 hover:text-ink-900">
               {i.title} <ArrowRight className="size-3.5" />
             </Link>
           ))}
+          {active.length > 3 && <span className="text-sm text-warning-700">+{active.length - 3} more</span>}
         </div>
       )}
 
@@ -107,13 +112,13 @@ export function DashboardPage() {
             <Link key={type} to={`/interviews/new?type=${type}`} className="group">
               <Card className="card-hover flex h-full flex-col p-6">
                 <div className="flex items-center justify-between">
-                  <span className="flex size-10 items-center justify-center rounded-full bg-brand-50 text-brand-700"><Icon className="size-[18px]" aria-hidden /></span>
+                  <span className={cn('flex size-10 items-center justify-center rounded-full', FORMAT_TONE[type].chip)}><Icon className="size-[18px]" aria-hidden /></span>
                   <span className="font-serif text-sm text-ink-400">0{i + 1}</span>
                 </div>
                 <p className="mt-6 font-serif text-xl font-semibold">{title}</p>
                 <p className="mt-2 flex-1 text-sm leading-relaxed text-ink-500">{text}</p>
                 <p className="mt-5 flex items-center gap-1.5 text-sm font-medium text-ink-900">
-                  {needsResume && !hasResume ? 'Needs your resume' : 'Start'}
+                  {needsResume && !hasResume ? 'Add resume & start' : 'Start'}
                   <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
                 </p>
               </Card>
@@ -179,7 +184,7 @@ export function DashboardPage() {
           <dl className="grid grid-cols-2 gap-x-8 gap-y-10 lg:col-span-6 lg:col-start-7">
             {FACTS.map(([n, text]) => (
               <div key={text} className="border-t border-ink-200 pt-5">
-                <dt className="font-serif text-5xl leading-none font-semibold text-brand-700">{n}</dt>
+                <dt className="font-serif text-5xl leading-none font-semibold text-clay-600">{n}</dt>
                 <dd className="mt-3 text-sm leading-relaxed text-ink-500">{text}</dd>
               </div>
             ))}
@@ -188,9 +193,9 @@ export function DashboardPage() {
       </section>
 
       <section className="mt-24 grid gap-5 sm:grid-cols-2">
-        {PILLARS.map(({ icon: Icon, title, text }) => (
+        {PILLARS.map(({ icon: Icon, title, text }, i) => (
           <Card key={title} className="card-hover p-8">
-            <span className="flex size-10 items-center justify-center rounded-full bg-brand-50 text-brand-700"><Icon className="size-[18px]" aria-hidden /></span>
+            <span className={cn('flex size-10 items-center justify-center rounded-full', TONES[i % TONES.length])}><Icon className="size-[18px]" aria-hidden /></span>
             <p className="mt-6 font-serif text-2xl font-semibold">{title}</p>
             <p className="mt-3 leading-relaxed text-ink-500">{text}</p>
           </Card>
@@ -215,7 +220,7 @@ export function DashboardPage() {
         <div>
           <h2 className="text-3xl leading-tight font-semibold sm:text-4xl">Is your resume getting read?</h2>
           <p className="mt-3 max-w-xl leading-relaxed text-ink-500">
-            Check how an applicant tracking system scores it, see the keywords a job is looking for, and get a tailored version that never invents a thing.
+            See how an applicant tracking system scores it against a job, which keywords and skills are missing, and what to fix first.
           </p>
         </div>
         <Link to="/resume" className={buttonClass('primary', 'px-6 py-3')}>Check my ATS score <ArrowRight className="size-4" /></Link>

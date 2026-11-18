@@ -25,6 +25,19 @@
   --color-brand-600: #647f6a;
   --color-brand-700: #4e6654;
 
+  /* two quiet secondary tones, used sparingly to tell things apart (e.g. the four
+     interview formats): a warm clay and a cool mist, at the same low saturation as sage */
+  --color-clay-50: #f8efe8;
+  --color-clay-100: #f1dfd1;
+  --color-clay-500: #c07e58;
+  --color-clay-600: #a8673f;
+  --color-clay-700: #8a5233;
+  --color-mist-50: #edf1f4;
+  --color-mist-100: #dde5ec;
+  --color-mist-500: #7b8fa3;
+  --color-mist-600: #5f7388;
+  --color-mist-700: #4a5b6d;
+
   /* warm neutrals (text, borders, fills) */
   --color-ink-50: #faf9f6;
   --color-ink-100: #f2efe9;

@@ -10,7 +10,7 @@ import { Avatar } from '@/components/Brand'
 import { Button, Card, ErrorAlert } from '@/components/ui'
 import { buttonClass, fieldClass } from '@/components/ui/styles'
 import { useStartInterview } from '@/features/interview/api'
-import { DURATIONS, EXPERIENCE, INTERVIEWERS, INTERVIEW_TYPES, POPULAR_TOPICS } from '@/features/interview/constants'
+import { DURATIONS, EXPERIENCE, FORMAT_TONE, INTERVIEWERS, INTERVIEW_TYPES, POPULAR_TOPICS } from '@/features/interview/constants'
 import { useAudioLevel, useUserMedia } from '@/features/interview/media'
 import { useSelectedInterviewResume } from '@/features/resume/api'
 import { InterviewResumePicker } from '@/features/resume/InterviewResumePicker'
@@ -30,7 +30,7 @@ const HEADINGS: Record<InterviewType | 'any', { title: string; text: string }> =
 function Field({ step, label, children }: { step?: number; label: string; children: ReactNode }) {
   return (
     <div>
-      <p className="mb-3 flex items-baseline gap-2.5 text-sm font-medium text-ink-900">
+      <p className="mb-2.5 flex items-baseline gap-2 text-[13px] font-medium text-ink-900">
         {step != null && <span className="font-serif text-brand-600">0{step}</span>}
         {label}
       </p>
@@ -48,7 +48,7 @@ const optionClass = (active: boolean) => cn(
 function Choice({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button type="button" onClick={onClick} aria-pressed={active}
-      className={cn('rounded-full px-4 py-2 text-sm', optionClass(active), active ? 'font-medium text-ink-900' : 'text-ink-700')}>
+      className={cn('rounded-full px-3.5 py-1.5 text-[13px]', optionClass(active), active ? 'font-medium text-ink-900' : 'text-ink-700')}>
       {children}
     </button>
   )
@@ -187,28 +187,28 @@ export function NewInterviewPage() {
 
         {/* ---------------- settings: scrolls inside the card; Start stays pinned below */}
         <Card className="flex flex-col lg:min-h-0">
-          <div className="space-y-10 p-6 sm:p-10 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+          <div className="space-y-8 p-6 sm:p-8 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
           {pickType ? (
             <Field step={step++} label="Interview type">
               <div className="grid gap-3 sm:grid-cols-2">
                 {INTERVIEW_TYPES.map((t) => (
                   <button key={t.id} type="button" onClick={() => setType(t.id)} aria-pressed={type === t.id}
-                    className={cn('rounded-2xl p-4 text-left', optionClass(type === t.id))}>
-                    <p className="font-medium">{t.label}</p>
-                    <p className="mt-1 text-sm text-ink-500">{t.hint}</p>
+                    className={cn('rounded-2xl p-3.5 text-left', optionClass(type === t.id))}>
+                    <p className="text-sm font-medium">{t.label}</p>
+                    <p className="mt-0.5 text-xs text-ink-500">{t.hint}</p>
                   </button>
                 ))}
               </div>
             </Field>
           ) : (
             // Format already chosen on the dashboard: a one-line summary, not the picker again.
-            <div className="flex items-center gap-4 rounded-2xl bg-paper-deep/70 px-5 py-4">
+            <div className={cn('flex items-center gap-4 rounded-2xl px-4 py-3', FORMAT_TONE[type].soft)}>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-medium tracking-[0.12em] text-ink-500 uppercase">Format</p>
-                <p className="mt-1 font-serif text-xl font-semibold">{chosen.label}</p>
+                <p className="mt-0.5 font-serif text-lg font-semibold">{chosen.label}</p>
               </div>
               <button type="button" onClick={() => setPickType(true)}
-                className="text-sm text-ink-500 underline decoration-ink-300 underline-offset-4 transition-colors hover:text-ink-900">
+                className="text-xs text-ink-500 underline decoration-ink-300 underline-offset-4 transition-colors hover:text-ink-900">
                 Change
               </button>
             </div>
@@ -216,7 +216,7 @@ export function NewInterviewPage() {
 
           {(type === 'resume' || type === 'jd') && (
             <Field step={step++} label="Your resume">
-              <p className="-mt-1 mb-3 text-sm text-ink-500">
+              <p className="-mt-1 mb-3 text-xs text-ink-500">
                 {type === 'jd' ? 'Questions connect the job’s requirements to your experience.' : 'The interviewer asks about the projects and roles on it.'}
                 {' '}Kept separate from the ATS checker.
               </p>
@@ -227,7 +227,7 @@ export function NewInterviewPage() {
           <Field step={step++} label={type === 'topic' ? 'Topic' : type === 'hr' ? 'Target role (optional)' : 'Focus topic (optional)'}>
               <input value={topic} onChange={(e) => setTopic(e.target.value)} maxLength={120} aria-label="Topic"
                 placeholder={type === 'hr' ? 'e.g. Software engineering intern' : type === 'topic' ? 'e.g. Bias-Variance' : 'e.g. Backend APIs, or leave empty'}
-                className={fieldClass} />
+                className={cn(fieldClass, 'py-2 text-[13px]')} />
               {type === 'topic' && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {POPULAR_TOPICS.map((t) => (
@@ -238,18 +238,18 @@ export function NewInterviewPage() {
               )}
               {type === 'topic' && (
                 <input value={subtopics} onChange={(e) => setSubtopics(e.target.value)} aria-label="Sub-topics"
-                  placeholder="Sub-topics, optional and comma separated" className={cn(fieldClass, 'mt-4')} />
+                  placeholder="Sub-topics, optional and comma separated" className={cn(fieldClass, 'mt-3 py-2 text-[13px]')} />
               )}
             </Field>
 
           {type === 'jd' && (
             <Field step={step++} label="Job description">
               <textarea value={jdText} onChange={(e) => setJdText(e.target.value)} rows={6} aria-label="Job description"
-                placeholder="Paste the job description you are preparing for" className={fieldClass} />
+                placeholder="Paste the job description you are preparing for" className={cn(fieldClass, 'text-[13px] leading-relaxed')} />
             </Field>
           )}
 
-          <div className="grid gap-10 sm:grid-cols-2">
+          <div className="grid gap-8 sm:grid-cols-2">
             <Field step={step++} label="Experience">
               <div className="flex flex-wrap gap-2">
                 {EXPERIENCE.map((e) => <Choice key={e.id} active={experience === e.id} onClick={() => setExperience(e.id)}>{e.label}</Choice>)}
@@ -269,8 +269,8 @@ export function NewInterviewPage() {
                   className={cn('flex items-center gap-3 rounded-2xl p-3 text-left', optionClass(interviewer === p.id))}>
                   <Avatar persona={p.id} size="sm" />
                   <span className="leading-tight">
-                    <span className="block text-sm font-medium">{p.name}</span>
-                    <span className="block text-xs text-ink-500">{p.style}</span>
+                    <span className="block text-[13px] font-medium">{p.name}</span>
+                    <span className="block text-[11px] text-ink-500">{p.style}</span>
                   </span>
                 </button>
               ))}

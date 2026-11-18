@@ -121,3 +121,32 @@ def test_trim_silence_replaces_edge_silence_with_a_fixed_pause():
     out = trim_silence(clip, sr, pause_s=0.18)
     assert abs(len(out) / sr - (1.0 + 0.015 + 0.18)) < 0.02
     assert pause_after("How would you check it?") > pause_after("First, the data,")
+
+
+def test_prep_schema_is_strict_safe_and_tracks_come_from_the_question_bank():
+    """Prep output goes through Groq strict mode: no optional fields allowed. Tracks are
+    read from knowledge_base/questions, so every track has subtopics to pick from."""
+    from app.schemas.prep import PrepQuestion, PrepSet
+    from app.services.prep_service import list_tracks
+
+    for schema in (PrepQuestion, PrepSet):
+        optional = [name for name, f in schema.model_fields.items() if not f.is_required()]
+        assert optional == [], f"{schema.__name__} has optional fields: {optional}"
+    tracks = {t.id: t for t in list_tracks()}
+    assert {"backend", "hr", "machine_learning"} <= tracks.keys()
+    assert all(t.topics for t in tracks.values())
+
+
+def test_prep_repeat_filter_catches_rewordings_but_keeps_new_angles():
+    """Measured on real "More questions" output for a resume."""
+    from app.services.prep_service import is_repeat
+
+    assert is_repeat(
+        "Looking at your entire career, if you could revisit any project, which one would you change and why?",
+        "Looking back at your entire career, what would you change about one of your projects if you had the chance?",
+    )
+    assert not is_repeat(
+        "Your Resume Matcher project indexed 50k job postings using Qdrant. What was the hardest part?",
+        "Can you walk me through the Resume Matcher project you built at DataNest Labs?",
+    )
+    assert not is_repeat("What makes an API RESTful?", "How would you design pagination for a public API?")

@@ -80,11 +80,12 @@ export function InterviewReportPage() {
         <div className="space-y-16">
           <div className="space-y-8">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <ScoreCard label="Overall" score={r.overall_score} hint="70+ ≈ would pass at this level" />
+              <ScoreCard label="Overall" score={r.overall_score} hint="70 or more: likely to pass at this level" />
               <ScoreCard label={isHr ? 'Content' : 'Technical'} score={r.technical_score}
                 hint={isHr ? 'Relevance and concrete examples' : 'Knowledge and correctness'} />
               <ScoreCard label="Communication" score={r.communication_score} hint="Clarity, pace, conciseness" />
-              <ScoreCard label="Structure" score={r.structure_score} hint="Organisation (STAR for HR)" />
+              <ScoreCard label="Structure" score={r.structure_score}
+                hint={isHr ? 'STAR: situation, task, action, result' : 'Order and flow of your answers'} />
             </div>
             <blockquote className="border-l-2 border-brand-500 pl-6 font-serif text-xl leading-relaxed text-ink-700 sm:text-2xl">
               {r.summary}
@@ -95,13 +96,13 @@ export function InterviewReportPage() {
             <Eyebrow>How you spoke</Eyebrow>
             <div className="mt-4 grid divide-ink-200 border-y border-ink-200 sm:grid-cols-2 sm:divide-x lg:grid-cols-4 [&>*]:border-ink-200 max-sm:[&>*+*]:border-t">
               <Stat label="Pace" value={pace ? `${pace} wpm` : '–'}
-                hint={pace == null ? 'Typed answers have no pace' : pace < 110 ? 'A bit slow; aim for 120-160' : pace > 170 ? 'Fast; slow down a little' : 'Comfortable pace'} />
+                hint={pace == null ? 'Not enough speech to measure' : pace < 110 ? 'A bit slow; aim for 120-160' : pace > 170 ? 'Fast; slow down a little' : 'Comfortable pace'} />
               <Stat label="Filler words" value={`${r.metrics.fillers_per_100_words}/100`}
                 hint={r.metrics.top_fillers.length ? `Most used: ${r.metrics.top_fillers.join(', ')}` : 'Nice and clean'} />
               <Stat label="Answer length" value={`${r.metrics.avg_answer_words} words`}
                 hint={r.metrics.avg_answer_words < 40 ? 'Short; add an example' : 'Good amount of detail'} />
               <Stat label="Answers" value={r.metrics.answers}
-                hint={r.metrics.speaking_seconds ? `${r.metrics.speaking_seconds}s of speaking` : 'Typed answers'} />
+                hint={r.metrics.speaking_seconds ? `${r.metrics.speaking_seconds}s of speaking` : 'Speaking time not recorded'} />
             </div>
           </section>
 

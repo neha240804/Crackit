@@ -1,11 +1,21 @@
 import type { ExperienceLevel, InterviewerId, InterviewType } from '@/lib/types'
 
+// One name per format, used everywhere (dashboard cards, new-interview page, room titles).
 export const INTERVIEW_TYPES: { id: InterviewType; label: string; hint: string }[] = [
-  { id: 'topic', label: 'Topic / role', hint: 'Any subject, e.g. Bias-Variance, React, SQL' },
-  { id: 'resume', label: 'My resume', hint: 'Questions about your own projects and skills' },
-  { id: 'jd', label: 'Job description', hint: 'Practise for a specific job posting' },
+  { id: 'topic', label: 'Any topic', hint: 'Any subject, e.g. Bias-Variance, React, SQL' },
+  { id: 'resume', label: 'Your resume', hint: 'Questions about your own projects and skills' },
+  { id: 'jd', label: 'A job post', hint: 'Rehearse for a specific job description' },
   { id: 'hr', label: 'HR & behavioral', hint: 'Introduction, teamwork, strengths, challenges' },
 ]
+
+// A quiet colour per format, so the four are told apart at a glance (sage, clay, mist,
+// honey). chip = icon badge; soft = a light panel tint.
+export const FORMAT_TONE: Record<InterviewType, { chip: string; soft: string }> = {
+  topic: { chip: 'bg-brand-50 text-brand-700', soft: 'bg-brand-50' },
+  resume: { chip: 'bg-clay-50 text-clay-700', soft: 'bg-clay-50' },
+  jd: { chip: 'bg-mist-50 text-mist-700', soft: 'bg-mist-50' },
+  hr: { chip: 'bg-warning-50 text-warning-700', soft: 'bg-warning-50' },
+}
 
 export const EXPERIENCE: { id: ExperienceLevel; label: string }[] = [
   { id: 'fresher', label: 'Fresher' },

@@ -73,7 +73,7 @@ export interface Resume {
   profile: CandidateProfile | null
 }
 
-// ---------------------------------------------------------------- ATS check + optimizer
+// ---------------------------------------------------------------- ATS check
 export interface JDAnalysis {
   title: string | null
   company: string | null
@@ -117,53 +117,6 @@ export interface AnalysisResult {
   match: KeywordMatch | null
   gaps: { gaps: GapItem[]; strengths: string[]; summary: string } | null
   overall_score: number
-}
-
-export interface OptimizedBullet {
-  text: string
-  source_ids: string[]
-}
-
-export interface OptimizedEntry {
-  source_id: string
-  heading: string
-  subheading: string | null
-  bullets: OptimizedBullet[]
-}
-
-export interface OptimizedResume {
-  summary: string
-  summary_source_ids: string[]
-  skills: string[]
-  experience: OptimizedEntry[]
-  projects: OptimizedEntry[]
-}
-
-export interface VerificationIssue {
-  location: string
-  text: string
-  problem: string
-}
-
-export interface Verification {
-  attempts: number
-  issues_per_attempt: number[]
-  history: { attempt: number; issues: VerificationIssue[] }[]
-  reverted: { location: string; rewritten: string; replaced_with: string | null }[]
-  removed_skills: string[]
-  verified: boolean
-}
-
-export interface ResumeVersion {
-  id: string
-  resume_id: string
-  created_at: string
-  job_title: string | null
-  overall_score: number | null
-  verified: boolean
-  content: OptimizedResume
-  analysis: AnalysisResult
-  verification: Verification
 }
 
 // ---------------------------------------------------------------- mock interview
@@ -257,4 +210,25 @@ export interface InterviewSummary {
   created_at: string
   duration_minutes: number
   overall_score: number | null
+}
+
+// ---------------------------------------------------------------- question prep
+export interface PrepQuestion {
+  question: string
+  difficulty: 'easy' | 'medium' | 'hard'
+  answer: string
+  key_points: string[]
+  tip: string
+}
+
+export interface PrepSetOut {
+  topic: string
+  experience: ExperienceLevel
+  questions: PrepQuestion[]
+}
+
+export interface PrepTrack {
+  id: string
+  label: string
+  topics: string[]
 }
