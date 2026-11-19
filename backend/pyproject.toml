@@ -1,7 +1,7 @@
 [project]
 name = "mockinterview-backend"
 version = "0.1.0"
-description = "MockInterview AI - real-time voice mock interviews (backend)"
+description = "Crackit - interview practice: voice mock interviews, question prep, ATS check (backend)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.115",

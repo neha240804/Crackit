@@ -41,7 +41,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
     <div className="grid min-h-screen bg-paper lg:grid-cols-[1.05fr_1fr]">
       {/* editorial panel */}
       <aside className="hidden flex-col border-r border-ink-200/80 bg-paper-deep/70 p-14 lg:flex">
-        <Link to="/" aria-label="MockInterview home"><Logo /></Link>
+        <Link to="/" aria-label="Crackit home"><Logo /></Link>
         <div className="my-auto max-w-md">
           <Eyebrow>Free interview coach</Eyebrow>
           <p className="mt-6 font-serif text-[2.6rem] leading-[1.1] font-semibold tracking-tight">
@@ -66,7 +66,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       {/* form */}
       <main className="flex items-center justify-center px-6 py-14">
         <div className="w-full max-w-sm">
-          <Link to="/" className="mb-12 inline-block lg:hidden" aria-label="MockInterview home"><Logo /></Link>
+          <Link to="/" className="mb-12 inline-block lg:hidden" aria-label="Crackit home"><Logo /></Link>
           <h1 className="text-4xl font-semibold">{isRegister ? 'Create your account' : 'Welcome back'}</h1>
           <p className="mt-3 text-ink-500">
             {isRegister ? 'Free, and ready in a minute. No card needed.' : 'Log in to continue practising.'}

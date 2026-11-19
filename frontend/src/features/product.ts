@@ -1,4 +1,4 @@
-// The product in one place: the three tools MockInterview offers, each with ONE name, icon,
+// The product in one place: the three tools Crackit offers, each with ONE name, icon,
 // colour and description. The landing page, the app navigation and the dashboard all read
 // from here, so a visitor sees the same three things everywhere and learns them once.
 

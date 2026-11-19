@@ -45,7 +45,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   } catch {
     // fetch() itself failed: no response at all (server stopped, connection dropped, offline).
     // The browser's own message is just "Failed to fetch", which tells the user nothing.
-    throw new ApiError(0, "Can't reach the MockInterview server. Check that it's running and try again.")
+    throw new ApiError(0, "Can't reach the Crackit server. Check that it's running and try again.")
   }
 
   if (response.status === 401 && token) {

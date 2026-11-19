@@ -1,4 +1,4 @@
-// Public landing page. Goal: within five seconds a visitor knows what MockInterview is (a free
+// Public landing page. Goal: within five seconds a visitor knows what Crackit is (a free
 // interview coach), the three tools it offers, and where to start.
 //   hero (what it is + all three tools) → the three tools → how a mock interview works →
 //   what the interviewer does → the report → interviewers → one closing call to action.
@@ -80,7 +80,7 @@ export function LandingPage() {
       {/* ---------------------------------------------------------------- header: the product's tools, not page sections */}
       <header className="sticky top-0 z-30 border-b border-ink-200/80 bg-paper">
         <Container className="flex h-[68px] items-center gap-4 md:gap-10">
-          <Link to="/" aria-label="MockInterview home" className="shrink-0"><Logo /></Link>
+          <Link to="/" aria-label="Crackit home" className="shrink-0"><Logo /></Link>
           <nav className="hidden gap-7 text-sm whitespace-nowrap text-ink-500 lg:flex" aria-label="Product">
             {TOOLS.map((t) => (
               <a key={t.id} href={`#${t.id}`} className="transition-colors hover:text-ink-900">{t.name}</a>
@@ -260,7 +260,7 @@ export function LandingPage() {
       <section className="pb-24 sm:pb-28">
         <Container>
           <div className="rounded-3xl bg-ink-900 px-8 py-16 text-center text-paper sm:px-16 sm:py-20">
-            <h2 className="mx-auto max-w-2xl text-3xl leading-tight font-semibold text-paper sm:text-[2.6rem]">Your next interview is a conversation. Rehearse one.</h2>
+            <h2 className="mx-auto max-w-2xl text-3xl leading-tight font-semibold text-balance text-paper sm:text-[2.6rem]">Practice out loud. Crack the real one.</h2>
             <p className="mx-auto mt-5 max-w-md text-ink-300">Free, and ready in a minute. Five minutes is enough for your first session.</p>
             <Link to="/register" className={buttonClass('secondary', 'mt-9 border-transparent px-7 py-3 text-[0.95rem]')}>
               Create a free account <ArrowRight className="size-4" />
@@ -274,7 +274,7 @@ export function LandingPage() {
         <Container className="flex flex-col gap-6 py-10 text-sm text-ink-500 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col gap-2">
             <Logo />
-            <p className="text-ink-400">Practise out loud. Improve with every session.</p>
+            <p className="text-ink-400">Practice out loud, crack the real one.</p>
           </div>
           <nav className="flex flex-wrap gap-x-6 gap-y-2" aria-label="Footer">
             {TOOLS.map((t) => <a key={t.id} href={`#${t.id}`} className="transition-colors hover:text-ink-900">{t.name}</a>)}

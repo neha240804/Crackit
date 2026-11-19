@@ -29,7 +29,7 @@ export function AppShell() {
       <header className="sticky top-0 z-30 border-b border-ink-200/80 bg-paper">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-5 sm:gap-8 sm:px-8">
           {/* phones: just the round mark, so the nav and account buttons fit on one line */}
-          <Link to="/dashboard" aria-label="MockInterview home"><Logo className="max-sm:[&>span:last-child]:hidden" /></Link>
+          <Link to="/dashboard" aria-label="Crackit home"><Logo className="max-sm:[&>span:last-child]:hidden" /></Link>
           <nav className="flex items-center gap-0.5 sm:gap-1" aria-label="Main">
             {/* Phones: icons only, plus the CURRENT page's short label, so you always know where
                 you are; three labels + account buttons overflowed a 375 px screen. */}

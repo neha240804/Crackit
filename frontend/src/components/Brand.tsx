@@ -1,20 +1,29 @@
 // Brand pieces shared by every page: logo, interviewer portraits, score card.
 
-import { AudioLines } from 'lucide-react'
-
 import { Card } from '@/components/ui'
 import type { InterviewerId } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-/** Serif wordmark with a small solid sage mark. `dark` = for the dark interview room. */
+/** Crackit mark: a "C" whose end turns into a tick, i.e. you cracked it. Ink C + sage tick on
+ *  light pages; paper C + lighter sage on the dark interview room. Drawn inline (no image file)
+ *  so it stays crisp at any size and takes its colours from the design tokens. */
+export function LogoMark({ dark = false, className }: { dark?: boolean; className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" className={cn('size-7 shrink-0', className)} aria-hidden>
+      <path d="M36 12A16 16 0 1 0 38 34" fill="none" strokeWidth="6" strokeLinecap="round" className={dark ? 'stroke-paper' : 'stroke-ink-900'} />
+      <path d="M22 24l6 6 14-16" fill="none" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" className={dark ? 'stroke-brand-500' : 'stroke-brand-600'} />
+    </svg>
+  )
+}
+
+/** Mark + serif wordmark. `dark` = for the dark interview room. The wordmark must stay the
+ *  last child: phone headers hide it with `[&>span:last-child]:hidden`. */
 export function Logo({ dark = false, className }: { dark?: boolean; className?: string }) {
   return (
-    <span className={cn('flex items-center gap-2.5', className)}>
-      <span className={cn('flex size-7 items-center justify-center rounded-full', dark ? 'bg-brand-500 text-ink-900' : 'bg-ink-900 text-paper')}>
-        <AudioLines className="size-3.5" aria-hidden />
-      </span>
+    <span className={cn('flex items-center gap-2', className)}>
+      <LogoMark dark={dark} />
       <span className={cn('font-serif text-[1.15rem] leading-none font-semibold tracking-tight whitespace-nowrap', dark ? 'text-paper' : 'text-ink-900')}>
-        MockInterview
+        Crackit
       </span>
     </span>
   )
