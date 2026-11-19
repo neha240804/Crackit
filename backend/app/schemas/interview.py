@@ -46,9 +46,11 @@ class InterviewConfig(BaseModel):
 # ---------------------------------------------------------------- LLM outputs
 class InterviewPlan(BaseModel):
     focus_areas: list[str] = Field(
-        description="4-6 areas to cover, in order, from fundamentals to applied. Short labels."
+        description="4-6 specific, interview-worthy themes to cover, in order; never vague "
+                    "areas like basics or fundamentals. Short labels."
     )
-    title: str = Field(description="Short display title for this interview, max 6 words")
+    title: str = Field(description="Short display title for this interview, max 6 words, "
+                                   "naming the topic (no words like Basics or Fundamentals)")
 
 
 class InterviewerTurn(BaseModel):
@@ -74,7 +76,8 @@ class InterviewerTurnWithSwitch(InterviewerTurn):
     """
 
     switch_reaction: str = Field(description="Correct idea in one short sentence + transition")
-    switch_question: str = Field(description="ONE simple question about the next topic")
+    switch_question: str = Field(description="ONE clear, concrete question about the next "
+                                             "topic, at the candidate's level (not a definition)")
 
 
 class QuestionFeedback(BaseModel):

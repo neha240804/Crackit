@@ -21,6 +21,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
+from app.agents.common.levels import REAL_QUESTION_STYLE, level_guide
 from app.agents.common.llm import get_structured_llm
 from app.agents.interview.prompts import (
     INTERVIEWER_PROMPT,
@@ -105,7 +106,8 @@ async def plan_node(state: InterviewState) -> dict:
     )
     llm = get_structured_llm(InterviewPlan, tier="fast")
     plan: InterviewPlan = await llm.ainvoke([
-        SystemMessage(PLAN_PROMPT),
+        SystemMessage(PLAN_PROMPT.format(level_guide=level_guide(cfg["experience"]),
+                                         question_style=REAL_QUESTION_STYLE)),
         HumanMessage(f"SETTINGS:\n{settings_text}\n\nCANDIDATE CONTEXT:\n"
                      f"{state.get('context') or '-'}\n\nQUESTION BANK:\n{state['kb']}"),
     ])
@@ -239,12 +241,14 @@ async def interviewer_node(state: InterviewState) -> dict:
         rule = thread_rule(depth, misses)
         if misses == MAX_MISSES - 1:  # struggling: draft the switch now, avoiding a 2nd call
             rule += ("\nALSO fill switch_reaction (the correct idea in one short sentence, then "
-                     "'Let's move on.') and switch_question (ONE simple, basic question about "
-                     f"'{target}', a single idea). They are used if you have to move on.")
+                     "'Let's move on.') and switch_question (ONE clear, concrete question about "
+                     f"'{target}' at the candidate's level: a single idea, never a definition). "
+                     "They are used if you have to move on.")
         system = INTERVIEWER_PROMPT.format(
             name=persona["name"], style=persona["style"], title=plan["title"],
             interview_type=TYPE_LABEL[cfg["interview_type"]],
             experience=EXPERIENCE_LABEL[cfg["experience"]],
+            level_guide=level_guide(cfg["experience"]), question_style=REAL_QUESTION_STYLE,
             focus_areas="; ".join(plan["focus_areas"]), covered=", ".join(covered) or "none yet",
             thread=thread, depth=depth, thread_rule=rule,
             remaining=remaining_seconds(state), kb=kb, context=state.get("context") or "-",
@@ -259,6 +263,7 @@ async def interviewer_node(state: InterviewState) -> dict:
         system = SWITCH_PROMPT.format(
             name=persona["name"], style=persona["style"],
             experience=EXPERIENCE_LABEL[cfg["experience"]], current=thread, target=target, kb=kb,
+            level_guide=level_guide(cfg["experience"]),
         )
         turn = await llm.ainvoke([SystemMessage(system), human])
         turn.next_move, turn.focus_area = "new_topic", target

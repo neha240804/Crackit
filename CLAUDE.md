@@ -222,6 +222,16 @@ https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1 (full 
   match the prompt says to use the subject's standard syllabus instead.
 - **"Fresher" means a graduate, not a beginner.** The old level text ("easy ... definitions")
   produced textbook one-liners for core subjects; it now asks for campus/PSU-level depth.
+- **Pitch questions like a real interview, everywhere.** `agents/common/levels.py` holds
+  `LEVEL_GUIDE` (what each level expects) and `REAL_QUESTION_STYLE` (own work, scenarios,
+  why/what-if, compare, debug; never definitions). The plan, interviewer, switch and prep
+  prompts all include them. Before this the interviewer saw only the label "Fresher", the plan
+  said "start with fundamentals" and the switch asked for "a simple, basic question": sampled
+  interviews asked "what does CRUD stand for?" and "explain Ohm's law". Don't reintroduce
+  "basics"/"simple" wording in prompts or schema descriptions.
+- **Prep uses the strong model only for topics with no question-bank match** (core
+  engineering): the fast model invented terms there ("4-pole vs 6-pole breaker"). Grounded
+  topics and resume sets stay on the fast model. Prep must not assume projects without a resume.
 - **Never label every failure "rate limit".** `_ai_error()` logs the real exception; a blanket
   message once hid a schema bug.
 - **Stuck state:** if the interviewer step fails after the answer was recorded, the graph waits
@@ -247,6 +257,14 @@ https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1 (full 
   call; charged only on success; an interview counts once, never its answers). `/tts` only
   voices chunks registered by `presynthesize()` (403 otherwise). LangSmith tracing is forced
   off when `APP_ENV=production` unless `TRACE_IN_PRODUCTION=true`.
+- **Bring-your-own-key (BYOK):** users can save their own free Groq key in `/settings`
+  (`api/v1/account.py`). It's checked with Groq, AES-256-GCM encrypted with the user id as
+  associated data (`core/crypto.py`, `KEY_ENCRYPTION_KEY`), and never returned (only a hint).
+  `get_current_user` decrypts it into a per-request ContextVar (`core/groq_key.py`); LLM and
+  Whisper clients are built per call with `current_groq_key()`. Never put the key in graph
+  state (it's checkpointed to Postgres). With an own key the daily budget is skipped. Own-key
+  failures map to 400 + "update it in Settings" (`agents/common/errors.py`), never 401 (the
+  frontend logs out on 401).
 - **`APP_ENV=production`** makes startup fail on development defaults (SECRET_KEY, DB
   password, localhost/`*` CORS, missing Groq key) and hides `/docs`. CORS origins come from
   `CORS_ORIGINS` in `.env`. Tests: `tests/test_hardening.py`.

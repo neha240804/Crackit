@@ -10,11 +10,12 @@ import asyncio
 import logging
 import re
 
-import groq
 from fastapi import HTTPException
 from langchain_core.messages import HumanMessage, SystemMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.common.errors import ai_http_error
+from app.agents.common.levels import REAL_QUESTION_STYLE, level_guide
 from app.agents.common.llm import get_structured_llm
 from app.agents.profile.sources import build_sources, format_sources
 from app.db.models import User
@@ -53,15 +54,30 @@ PREP_PROMPT = """You write interview preparation material for students and job s
 
 Write {count} DISTINCT interview questions on the topic, each with a model answer.
 Level: {level} ({mix}).
+LEVEL: {level_guide}
+
+The goal: a candidate who studies this set should recognise these questions in their real
+interview. Pick the questions interviewers for this topic and level ask most often, and the
+ones candidates most often get wrong, not textbook trivia or language internals that rarely
+come up (for Python, e.g., "__new__ vs __init__" is trivia; "why is my default list argument
+shared between calls?" is a real interview question).
+
+{question_style}
 
 Rules:
 - EVERY question must be about the TOPIC itself. Use the curated syllabus only where it is
   about this topic; if there is none, follow the standard university syllabus for the subject
   and how it is really examined in interviews (core companies, PSUs and campus placements for
   engineering and science; product companies for software).
-- Questions are what a real interviewer asks at this level. Vary them: why/how, comparisons,
-  standard results, a small scenario. Avoid bare "What is X?" definitions unless the question
-  also asks why or how. No trick questions.
+- Mix the question types across the set: at least two realistic scenario or debugging
+  questions ("X happens; what do you check / do?"), why/how and what-if questions, one
+  compare-and-choose question, and for technical subjects one small hands-on problem (a query
+  to write, an output to predict, a quick calculation). No bare definitions or acronym
+  expansions, and no trick questions.
+- You know nothing about this candidate's projects: never write "in your project..." or
+  assume work they did. Frame scenarios as situations ("You're asked to...", "A motor...").
+- Write questions the way an interviewer says them: one or two sentences, plain text. Never
+  put code blocks or markdown in a question; describe any code in words.
 - For engineering, science and maths subjects, include analysis: why something is done, what
   happens when a condition changes, and at least one short numerical problem whose answer
   works the numbers out briefly in words.
@@ -69,7 +85,9 @@ Rules:
   answer, then explain briefly with one concrete example. 3-6 sentences, plain text, no markdown.
 - For behavioral topics, answer in STAR form (situation, task, action, result) with a
   realistic example a student could adapt.
-- Be accurate. If something depends on context, say so in one phrase.
+- Be accurate. If something depends on context, say so in one phrase. Every scenario must be
+  realistic and its premise technically true (don't invent a symptom that wouldn't happen),
+  and numerical problems must use the correct formula (e.g. three-phase quantities).
 - key_points: 3-4 short phrases an interviewer listens for.
 - tip: one sentence, a common mistake to avoid or how to stand out.
 - Do NOT repeat or rephrase any question in the ALREADY ASKED list."""
@@ -119,6 +137,7 @@ async def generate(db: AsyncSession, user: User, req: PrepRequest) -> PrepSetOut
         focus = (req.topic or "").strip()
         topic = f"Your resume: {resume.filename}"
         system = RESUME_PREP_PROMPT.format(count=req.count + 2, level=req.experience)
+        docs = []
         human = (f"SOURCES (the candidate's resume):\n{sources}\n\n"
                  f"FOCUS: {focus or 'the whole resume'}\n\nALREADY ASKED:\n{asked}")
     else:
@@ -131,24 +150,25 @@ async def generate(db: AsyncSession, user: User, req: PrepRequest) -> PrepSetOut
         )
         syllabus = "\n\n".join(d.page_content for d in docs) or (
             "(none for this topic: use the standard syllabus and real interview practice for it)")
-        system = PREP_PROMPT.format(count=req.count + 2, level=req.experience, mix=LEVEL_MIX[req.experience])
+        system = PREP_PROMPT.format(count=req.count + 2, level=req.experience, mix=LEVEL_MIX[req.experience],
+                                    level_guide=level_guide(req.experience),
+                                    question_style=REAL_QUESTION_STYLE)
         human = (f"TOPIC: {topic}\n\nCURATED SYLLABUS (questions real interviews ask, and what "
                  f"good answers cover):\n{syllabus}\n\nALREADY ASKED:\n{asked}")
+    # Which model: the fast one is accurate when the question bank grounds it (software, data,
+    # HR) and for resume sets (the resume grounds it). With NO bank match it has only its own
+    # knowledge, and for core engineering it invented things: in testing, a "4-pole vs 6-pole
+    # breaker" choice and a "system N-factor of 2.5" for power systems. The strong model knows
+    # these subjects far better; it costs more tokens, so only ungrounded topics use it (it
+    # falls back to the fast model on a rate limit).
+    grounded = bool(req.resume_id) or bool(docs)
     # (count + 2 above: two spares, because near-repeats are filtered out below.)
     await release_connection(db)  # no DB connection held during the LLM call
     try:
-        llm = get_structured_llm(PrepSet, tier="fast", temperature=0.5)
+        llm = get_structured_llm(PrepSet, tier="fast" if grounded else "strong", temperature=0.5)
         result: PrepSet = await llm.ainvoke([SystemMessage(system), HumanMessage(human)])
     except Exception as exc:  # log the real cause; never label every failure "rate limit"
-        logger.exception("Question prep failed for topic %r", topic)
-        cause = exc
-        while cause.__cause__ is not None and not isinstance(cause, groq.RateLimitError):
-            cause = cause.__cause__
-        if isinstance(cause, groq.RateLimitError):
-            raise HTTPException(503, "The AI is busy right now (free-tier rate limit). "
-                                     "Try again in a few seconds.") from exc
-        raise HTTPException(502, f"Could not generate questions ({exc.__class__.__name__}). "
-                                 "Please try again.") from exc
+        raise ai_http_error(exc, f"Question prep for {topic!r}") from exc
 
     # Drop near-repeats in code: the prompt alone wasn't enough (see is_repeat).
     kept: list = []
