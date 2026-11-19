@@ -34,7 +34,7 @@ const MODES: { type: InterviewType; icon: typeof BookOpen; title: string; text: 
 const FACTS: [string, string][] = [
   ['4', 'interview formats: any topic, your resume, a job post or HR'],
   ['3', 'interviewers to choose from: warm, direct or calm'],
-  ['5 min', 'is all one session takes, so you can build confidence a little every day'],
+  ['Clear fixes', 'every report shows what was strong, what was missing and your next steps'],
   ['0', 'camera frames ever leave your browser'],
 ]
 
@@ -214,7 +214,7 @@ export function DashboardPage() {
         <dl className="grid grid-cols-2 gap-x-8 gap-y-8 lg:col-span-6 lg:col-start-7">
           {FACTS.map(([n, text]) => (
             <div key={text} className="border-t border-ink-200 pt-4">
-              <dt className="font-serif text-4xl leading-none font-semibold text-clay-600">{n}</dt>
+              <dt className="font-serif text-3xl leading-none font-semibold text-clay-600 sm:text-4xl">{n}</dt>
               <dd className="mt-2.5 text-sm leading-relaxed text-ink-500">{text}</dd>
             </div>
           ))}
