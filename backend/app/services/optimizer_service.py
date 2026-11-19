@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.common.errors import ai_http_error
 from app.agents.optimizer.graph import optimizer_graph
 from app.core.config import DATA_DIR
 from app.db.models import JobDescription, Resume, ResumeVersion, User
@@ -48,10 +49,7 @@ async def _run(resume: Resume, jd_text: str | None, mode: str) -> dict:
                     "metadata": {"resume_id": str(resume.id)}},
         )
     except Exception as exc:
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY, f"The AI service failed ({exc.__class__.__name__}). "
-            "Please try again."
-        ) from exc
+        raise ai_http_error(exc, "The ATS check") from exc
 
 
 def _analysis(out: dict) -> AnalysisResult:

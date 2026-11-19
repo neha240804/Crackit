@@ -22,12 +22,13 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.groq_key import using_own_key
 from app.db.models import UsageCounter, User
 
 # Per user per UTC day. Sized for a serious day of practice, far below what would drain the
 # shared key: one interview is ~40k tokens, the free tier gives ~200k-ish per model per day.
 DAILY_LIMITS: dict[str, int] = {
-    "interview": 5,   # mock interviews started
+    "interview": 2,   # mock interviews started (the costliest: ~40k tokens each)
     "prep": 20,       # question-prep sets generated
     "ats": 15,        # ATS checks (analyze) and rewrites
     "resume": 10,     # resumes parsed (upload or reparse)
@@ -62,7 +63,8 @@ async def check(db: AsyncSession, user: User, action: str) -> None:
         raise HTTPException(
             429,
             f"You've used today's {limit} free {LABELS[action]}. "
-            "Your allowance resets at midnight UTC.",
+            "It resets at midnight UTC, or add your own free Groq key in Settings to keep "
+            "practising without a daily limit.",
         )
 
 
@@ -85,6 +87,11 @@ async def ai_budget(db: AsyncSession, user: User, action: str) -> AsyncIterator[
         async with ai_budget(db, user, "prep"):
             return await prep_service.generate(db, user, req)
     """
+    if using_own_key():
+        # Their own key, their own Groq quota: no daily allowance needed. (Per-minute limits
+        # still apply: they protect the server, not the quota.)
+        yield
+        return
     await check(db, user, action)
     yield  # an exception here skips the charge: failures are free
     await charge(db, user, action)

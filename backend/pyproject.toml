@@ -25,6 +25,7 @@ dependencies = [
     "langgraph-checkpoint-postgres>=3.2.1",
     "psycopg[binary,pool]>=3.3.9",
     "kokoro-onnx>=0.6.1",
+    "cryptography>=45",
 ]
 
 [dependency-groups]

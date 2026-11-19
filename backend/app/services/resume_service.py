@@ -14,6 +14,7 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.common.errors import ai_http_error
 from app.agents.profile.graph import profile_graph
 from app.core.config import DATA_DIR
 from app.db.models import Resume, User
@@ -82,7 +83,8 @@ async def _run_profile_graph(db: AsyncSession, resume: Resume) -> None:
         else:
             resume.profile, resume.status, resume.error = result["profile"], "ready", None
     except Exception as exc:  # noqa: BLE001 - LLM/network failure: record it, don't crash the request
-        resume.status, resume.error = "failed", f"Parsing failed: {exc.__class__.__name__}"
+        resume.status = "failed"
+        resume.error = ai_http_error(exc, "Resume parsing").detail
     await db.commit()
     await db.refresh(resume)
 

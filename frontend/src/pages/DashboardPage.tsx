@@ -3,13 +3,14 @@
 //   formats, question prep, ATS check) → progress and history → habits and how it works.
 // The one "New interview" button lives in the top bar, so the page doesn't repeat it.
 
-import { ArrowRight, ArrowUpRight, BookOpen, Briefcase, FileText, Users } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, BookOpen, Briefcase, FileText, KeyRound, Users } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 
 import { PageHeader } from '@/components/AppShell'
 import { Card, ErrorAlert, Eyebrow, Spinner } from '@/components/ui'
 import { buttonClass } from '@/components/ui/styles'
+import { useGroqKey, useUsage } from '@/features/account/api'
 import { useAuth } from '@/features/auth/context'
 import { useInterviews } from '@/features/interview/api'
 import { FORMAT_TONE } from '@/features/interview/constants'
@@ -76,6 +77,10 @@ export function DashboardPage() {
   const avg = scored.length ? Math.round(scored.reduce((a, b) => a + b, 0) / scored.length) : null
   const minutes = done.reduce((sum, i) => sum + i.duration_minutes, 0)
   const interview = toolById('interview')
+  const groqKey = useGroqKey()
+  const usage = useUsage()
+  const onSharedAllowance = groqKey.data != null && !(groqKey.data.saved && groqKey.data.readable)
+  const interviewsLeft = usage.data ? Math.max(0, usage.data.interview.limit - usage.data.interview.used) : null
 
   const stats: [string, number | string][] = [
     ['Interviews', done.length],
@@ -101,6 +106,20 @@ export function DashboardPage() {
           ))}
           {active.length > 3 && <span className="text-sm text-warning-700">+{active.length - 3} more</span>}
         </div>
+      )}
+
+      {/* Without their own key, users share the site's small free allowance: say so up front,
+          with the one step that removes the limit, instead of surprising them later. */}
+      {onSharedAllowance && interviewsLeft != null && (
+        <Link to="/settings"
+          className="group mb-8 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-ink-200 bg-white px-6 py-4 transition-colors hover:border-ink-300">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700"><KeyRound className="size-4" aria-hidden /></span>
+          <p className="min-w-0 flex-1 text-sm text-ink-700">
+            <span className="font-medium text-ink-900">{interviewsLeft} of {usage.data!.interview.limit} free mock interviews left today.</span>{' '}
+            Add your own free Groq key for no daily limit. It takes two minutes.
+          </p>
+          <span className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700">Add your key <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden /></span>
+        </Link>
       )}
 
       {/* ------------------------------------------------ the three tools */}

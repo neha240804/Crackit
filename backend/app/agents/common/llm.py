@@ -16,6 +16,7 @@ from langchain_groq import ChatGroq
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.core.groq_key import current_groq_key
 from app.core.http import groq_http_client
 
 Tier = Literal["fast", "strong"]
@@ -31,7 +32,7 @@ def get_llm(
     model = settings.llm_fast_model if tier == "fast" else settings.llm_strong_model
     return ChatGroq(
         model=model,
-        api_key=settings.groq_api_key,
+        api_key=current_groq_key(),  # the user's own key if they saved one (core/groq_key.py)
         temperature=temperature,
         reasoning_effort=reasoning_effort,  # "low" = faster/cheaper; raise for hard judgments
         max_tokens=max_tokens,

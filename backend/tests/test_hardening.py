@@ -38,7 +38,8 @@ async def test_async_password_check_matches_sync():
 # ---------------------------------------------------------------- production settings
 def _prod(**overrides) -> Settings:
     values = {"app_env": "production", "secret_key": STRONG_KEY, "postgres_password": "s3cret-pw",
-              "groq_api_key": "gsk_test", "cors_origins": "https://crackit.example.com"}
+              "groq_api_key": "gsk_test", "cors_origins": "https://crackit.example.com",
+              "key_encryption_key": "A" * 43 + "="}
     values.update(overrides)
     # _env_file=None: test only these values, never the developer's real .env
     return Settings(_env_file=None, **values)
@@ -124,3 +125,86 @@ def test_tts_allows_registered_interviewer_lines():
     chunks = tts.presynthesize("Good answer. Now, how would you index this table?", "maya", "test")
     assert chunks and all(tts.is_allowed(c) for c in chunks)
     assert tts.is_allowed("  " + chunks[0].replace(" ", "   "))  # extra whitespace is ignored
+
+
+# ---------------------------------------------------------------- bring-your-own-key
+def test_secret_encryption_roundtrip_and_isolation():
+    import uuid as _uuid
+
+    from app.core.crypto import DecryptionError, decrypt_secret, encrypt_secret
+
+    alice, bob = _uuid.uuid4(), _uuid.uuid4()
+    secret = "gsk_" + "a1B2" * 12
+    token = encrypt_secret(secret, alice)
+    assert secret not in token and token.startswith("v1:")
+    assert decrypt_secret(token, alice) == secret
+    assert encrypt_secret(secret, alice) != token  # fresh nonce: same key, different ciphertext
+    with pytest.raises(DecryptionError):  # copied onto another user's row: refuses
+        decrypt_secret(token, bob)
+    tampered = token[:-4] + ("AAAA" if not token.endswith("AAAA") else "BBBB")
+    with pytest.raises(DecryptionError):  # any change to the ciphertext is detected
+        decrypt_secret(tampered, alice)
+
+
+def test_key_hint_hides_the_key():
+    from app.core.groq_key import key_hint
+
+    hint = key_hint("gsk_" + "x" * 40 + "WXYZ")
+    assert hint == "gsk_…WXYZ" and len(hint) < 12
+
+
+async def test_user_key_reaches_tasks_and_threads_of_the_request():
+    """LangGraph runs nodes in tasks/threads started from the request: the key must follow."""
+    import asyncio
+
+    from app.core.groq_key import current_groq_key, set_user_key, using_own_key
+
+    async def read_later():
+        await asyncio.sleep(0.01)  # let the other "request" run in between
+        return current_groq_key()
+
+    async def request(key):
+        set_user_key(key)
+        in_task = await asyncio.create_task(read_later())
+        in_thread = await asyncio.to_thread(current_groq_key)
+        return in_task, in_thread, using_own_key()
+
+    a, b = await asyncio.gather(asyncio.create_task(request("gsk_userA")),
+                                asyncio.create_task(request("gsk_userB")))
+    assert a == ("gsk_userA", "gsk_userA", True)
+    assert b == ("gsk_userB", "gsk_userB", True)  # concurrent requests never mix keys
+
+
+def test_own_key_errors_point_to_settings():
+    import groq
+    import httpx
+
+    from app.agents.common.errors import ai_http_error
+    from app.core.groq_key import set_user_key
+
+    req = httpx.Request("POST", "https://api.groq.com")
+    auth = groq.AuthenticationError("bad key", response=httpx.Response(401, request=req), body=None)
+    wrapped = RuntimeError("graph failed")
+    wrapped.__cause__ = auth
+
+    set_user_key("gsk_user")
+    err = ai_http_error(wrapped, "Test")
+    assert err.status_code == 400 and "Settings" in err.detail  # never 401: that logs out
+    set_user_key(None)
+    err = ai_http_error(wrapped, "Test")
+    assert err.status_code == 502 and "Settings" not in err.detail
+
+
+async def test_own_key_skips_the_daily_budget():
+    from app.core.groq_key import set_user_key
+    from app.services.usage import ai_budget
+
+    set_user_key("gsk_user")
+    async with ai_budget(None, None, "interview"):  # no DB touched at all with an own key
+        pass
+    set_user_key(None)
+
+
+def test_production_requires_key_encryption_key():
+    with pytest.raises(ValidationError, match="KEY_ENCRYPTION_KEY"):
+        _prod(key_encryption_key="")

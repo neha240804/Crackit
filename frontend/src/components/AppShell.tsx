@@ -47,10 +47,12 @@ export function AppShell() {
             <Link to="/interviews/new" className={buttonClass('primary', 'px-3 py-2 sm:px-4')} aria-label="New interview">
               <Plus className="size-4" aria-hidden /> <span className="hidden sm:inline">New interview</span>
             </Link>
-            <span className="flex size-9 items-center justify-center rounded-full bg-brand-100 font-serif text-sm font-semibold text-brand-700"
-              title={user?.email}>
+            {/* the avatar opens Settings (your own Groq key, today's allowance) */}
+            <NavLink to="/settings" aria-label="Settings" title={`Settings · ${user?.email ?? ''}`}
+              className={({ isActive }) => cn('flex size-9 items-center justify-center rounded-full bg-brand-100 font-serif text-sm font-semibold text-brand-700 transition-shadow hover:ring-2 hover:ring-brand-200',
+                isActive && 'ring-2 ring-brand-500')}>
               {user?.name?.[0]?.toUpperCase() ?? '?'}
-            </span>
+            </NavLink>
             <button onClick={logout} className="rounded-full p-2 text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-900"
               aria-label="Log out" title="Log out">
               <LogOut className="size-4" />

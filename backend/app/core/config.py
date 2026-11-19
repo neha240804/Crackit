@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # Browser origins allowed to call the API, comma-separated in .env
     # (e.g. CORS_ORIGINS=https://crackit.example.com). Dev default: the Vite server.
     cors_origins: str = "http://localhost:5174"
+    # AES-256 key that encrypts users' own Groq keys at rest (32 bytes, base64). Generate:
+    # uv run python -c "from app.core.crypto import new_key_encryption_key as k; print(k())"
+    # Required in production; in development a key is derived from SECRET_KEY.
+    # Changing it makes saved keys unreadable (users are asked to add theirs again).
+    key_encryption_key: str = ""
     # LangSmith tracing in production (sends user data to LangSmith). Off unless set to true.
     trace_in_production: bool = False
 
@@ -94,6 +99,8 @@ class Settings(BaseSettings):
             problems.append("SECRET_KEY must be a random string of at least 32 characters")
         if self.postgres_password == "mockinterview":
             problems.append("POSTGRES_PASSWORD is still the development default")
+        if not self.key_encryption_key:
+            problems.append("KEY_ENCRYPTION_KEY is missing (it encrypts users' Groq keys)")
         if not self.groq_api_key:
             problems.append("GROQ_API_KEY is missing")
         if any(o.startswith("http://localhost") or o == "*" for o in self.cors_origin_list):

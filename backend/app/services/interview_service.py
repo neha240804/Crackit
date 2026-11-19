@@ -4,12 +4,12 @@ import logging
 import time
 import uuid
 
-import groq
 from fastapi import HTTPException, UploadFile, status
 from langgraph.types import Command
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.common.errors import ai_http_error
 from app.agents.interview import runtime
 from app.agents.interview.graph import answered_pairs, build_report, remaining_seconds
 from app.agents.profile.sources import build_sources, format_sources
@@ -32,17 +32,9 @@ logger = logging.getLogger(__name__)
 
 
 def _ai_error(exc: Exception, session: InterviewSession) -> HTTPException:
-    """Turn an AI failure into an honest message, and log the real exception. (A blanket
-    "rate limit" message once hid a schema bug: the cause never reached the logs.)"""
-    logger.exception("Interview %s: interviewer step failed", session.id)
-    cause = exc
-    while cause.__cause__ is not None and not isinstance(cause, groq.RateLimitError):
-        cause = cause.__cause__
-    if isinstance(cause, groq.RateLimitError):
-        return HTTPException(503, "The AI interviewer is busy right now (free-tier rate limit). "
-                                  "Wait a few seconds and answer again.")
-    return HTTPException(502, f"The AI interviewer hit an error ({exc.__class__.__name__}). "
-                              "Please answer again.")
+    """Honest message (own key vs shared key, rate limit vs error); the real cause is logged.
+    (A blanket "rate limit" message once hid a schema bug: the cause never reached the logs.)"""
+    return ai_http_error(exc, f"The AI interviewer (interview {session.id})")
 
 
 def _cfg(session: InterviewSession) -> dict:
@@ -124,8 +116,7 @@ async def start(db: AsyncSession, user: User, config: InterviewConfig) -> Interv
     except Exception as exc:
         await db.delete(session)
         await db.commit()
-        raise HTTPException(502, f"Could not start the interview ({exc.__class__.__name__}). "
-                                 "Please try again.") from exc
+        raise ai_http_error(exc, "Starting the interview") from exc
 
     session.config = {**session.config, "title": out["plan"]["title"]}
     await db.commit()
@@ -189,7 +180,7 @@ async def transcribe_only(
     try:
         text, duration = await stt.transcribe(data, audio.filename or "answer.webm", vocab)
     except Exception as exc:
-        raise HTTPException(502, f"Speech recognition failed ({exc.__class__.__name__})") from exc
+        raise ai_http_error(exc, "Speech recognition") from exc
     return TranscriptOut(text=text, duration_sec=duration)
 
 
@@ -210,7 +201,7 @@ async def answer(
         try:
             text, duration_sec = await stt.transcribe(data, audio.filename or "answer.webm", vocab)
         except Exception as exc:
-            raise HTTPException(502, f"Speech recognition failed ({exc.__class__.__name__})") from exc
+            raise ai_http_error(exc, "Speech recognition") from exc
     text = (text or "").strip()
     if not text:
         raise HTTPException(422, "We couldn't hear an answer. Please try speaking again.")
@@ -267,8 +258,7 @@ async def report(db: AsyncSession, user: User, session_id: uuid.UUID) -> dict:
     try:
         result = await build_report(values)
     except Exception as exc:
-        raise HTTPException(502, f"Report generation failed ({exc.__class__.__name__}). "
-                                 "Please retry.") from exc
+        raise ai_http_error(exc, "Report generation") from exc
 
     # Also store each answered question as a row: queryable history beyond the JSON report.
     feedback = {q["question_index"]: q for q in result["questions"]}

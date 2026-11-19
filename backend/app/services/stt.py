@@ -9,9 +9,9 @@
 from groq import AsyncGroq
 
 from app.core.config import settings
+from app.core.groq_key import current_groq_key
 from app.core.http import groq_http_client
 
-_client: AsyncGroq | None = None
 MIN_SPEECH_SECONDS = 0.8
 # Whisper's well-known outputs for silence/noise. Rejected so silence isn't scored as an answer.
 SILENCE_HALLUCINATIONS = {"thank you.", "thanks for watching!", "thank you for watching.",
@@ -19,10 +19,9 @@ SILENCE_HALLUCINATIONS = {"thank you.", "thanks for watching!", "thank you for w
 
 
 def _get_client() -> AsyncGroq:
-    global _client
-    if _client is None:
-        _client = AsyncGroq(api_key=settings.groq_api_key, http_client=groq_http_client())
-    return _client
+    # Built per call: the key depends on the request (the user's own key, if saved). Cheap,
+    # because every client shares the same warm HTTP connection pool.
+    return AsyncGroq(api_key=current_groq_key(), http_client=groq_http_client())
 
 
 async def transcribe(audio: bytes, filename: str, prompt: str | None = None) -> tuple[str, float | None]:

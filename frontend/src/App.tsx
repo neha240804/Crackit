@@ -1,6 +1,6 @@
 // Routes.
 //   public:            /  (landing), /login, /register
-//   logged in (light): /dashboard, /resume (ATS check), /prep (question prep),
+//   logged in (light): /dashboard, /resume (ATS check), /prep (question prep), /settings,
 //                      /interviews/new, /interviews/:id/report
 //   logged in (dark):  /interviews/:id  (full-screen interview room, no top bar)
 
@@ -18,6 +18,7 @@ import { LandingPage } from '@/pages/LandingPage'
 import { NewInterviewPage } from '@/pages/NewInterviewPage'
 import { PrepPage } from '@/pages/PrepPage'
 import { ResumePage } from '@/pages/ResumePage'
+import { SettingsPage } from '@/pages/SettingsPage'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth()
@@ -40,6 +41,7 @@ const router = createBrowserRouter([
       { path: '/dashboard', element: <DashboardPage /> },
       { path: '/resume', element: <ResumePage /> },
       { path: '/prep', element: <PrepPage /> },
+      { path: '/settings', element: <SettingsPage /> },
       { path: '/interviews/new', element: <NewInterviewPage /> },
       { path: '/interviews/:id/report', element: <InterviewReportPage /> },
     ],

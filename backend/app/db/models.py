@@ -6,9 +6,9 @@ profiles, reports, scores) is stored as JSONB.
 """
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,6 +25,11 @@ class User(TimestampedBase):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(120))
+    # Bring-your-own-key: the user's Groq API key, AES-256-GCM encrypted (core/crypto.py).
+    # Never returned by the API; the app shows only `groq_key_hint` ("gsk_…a1b2").
+    groq_key_encrypted: Mapped[str | None] = mapped_column(Text)
+    groq_key_hint: Mapped[str | None] = mapped_column(String(16))
+    groq_key_added_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Resume(TimestampedBase):
