@@ -7,12 +7,8 @@ import { Link, Navigate, useNavigate } from 'react-router'
 import { Logo } from '@/components/Brand'
 import { Button, ErrorAlert, Eyebrow, Input } from '@/components/ui'
 import { useAuth } from '@/features/auth/context'
-
-const POINTS = [
-  'A spoken conversation with real follow-up questions',
-  'Feedback on every answer and on how you speak',
-  'Any topic, your resume, a job post or behavioral',
-]
+import { TOOLS } from '@/features/product'
+import { cn } from '@/lib/utils'
 
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const { user, login, register } = useAuth()
@@ -47,13 +43,20 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       <aside className="hidden flex-col border-r border-ink-200/80 bg-paper-deep/70 p-14 lg:flex">
         <Link to="/" aria-label="MockInterview home"><Logo /></Link>
         <div className="my-auto max-w-md">
-          <Eyebrow>Voice mock interviews</Eyebrow>
+          <Eyebrow>Free interview coach</Eyebrow>
           <p className="mt-6 font-serif text-[2.6rem] leading-[1.1] font-semibold tracking-tight">
             Interviews are conversations. <em className="font-medium text-brand-700">Practise them like one.</em>
           </p>
-          <ul className="mt-10 space-y-4 text-ink-500">
-            {POINTS.map((p) => (
-              <li key={p} className="flex gap-3"><span className="mt-2.5 size-1.5 shrink-0 rounded-full bg-brand-600" />{p}</li>
+          {/* the same three tools, same icons, as the landing page and the app */}
+          <ul className="mt-10 space-y-5">
+            {TOOLS.map(({ id, name, icon: Icon, tone, tagline }) => (
+              <li key={id} className="flex gap-4">
+                <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-full', tone)}><Icon className="size-4" aria-hidden /></span>
+                <span>
+                  <span className="block font-medium text-ink-900">{name}</span>
+                  <span className="block text-sm leading-relaxed text-ink-500">{tagline}</span>
+                </span>
+              </li>
             ))}
           </ul>
         </div>
@@ -66,7 +69,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           <Link to="/" className="mb-12 inline-block lg:hidden" aria-label="MockInterview home"><Logo /></Link>
           <h1 className="text-4xl font-semibold">{isRegister ? 'Create your account' : 'Welcome back'}</h1>
           <p className="mt-3 text-ink-500">
-            {isRegister ? 'Free, and ready in a minute.' : 'Log in to continue practising.'}
+            {isRegister ? 'Free, and ready in a minute. No card needed.' : 'Log in to continue practising.'}
           </p>
           <form onSubmit={handleSubmit} className="mt-10 space-y-5">
             {isRegister && <Input label="Full name" name="name" required autoComplete="name" />}

@@ -1,7 +1,10 @@
-// Public landing page: editorial layout, warm paper, one sage accent, serif headlines.
+// Public landing page. Goal: within five seconds a visitor knows what MockInterview is (a free
+// interview coach), the three tools it offers, and where to start.
+//   hero (what it is + all three tools) → the three tools → how a mock interview works →
+//   what the interviewer does → the report → interviewers → one closing call to action.
 // Logged-in visitors go straight to the dashboard.
 
-import { ArrowRight, AudioLines, Captions, FileSearch, Gauge, MessageSquareQuote, Route } from 'lucide-react'
+import { ArrowRight, AudioLines, Captions, Check, Gauge, Layers, MessageSquareQuote, Route } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link, Navigate } from 'react-router'
 
@@ -10,27 +13,21 @@ import { Card, Eyebrow } from '@/components/ui'
 import { buttonClass } from '@/components/ui/styles'
 import { useAuth } from '@/features/auth/context'
 import { FORMAT_TONE, INTERVIEWERS } from '@/features/interview/constants'
+import { TOOLS } from '@/features/product'
 import { cn } from '@/lib/utils'
 
-const TYPES = [
-  ['Any topic', 'Machine learning, React, SQL, system design. You choose the subject.'],
-  ['Your resume', 'Questions about the projects and experience you actually have.'],
-  ['A job post', 'Paste a description and rehearse for that specific role.'],
-  ['Behavioral', 'Introductions, teamwork and challenges, judged on structure.'],
-]
-
+// What makes the mock interview feel real (the tools section already covers prep and ATS).
 const FEATURES: { icon: typeof AudioLines; title: string; text: string }[] = [
-  { icon: AudioLines, title: 'Spoken, not typed', text: 'Answer out loud. A two-second pause hands the turn back, the way it does in a real room.' },
+  { icon: AudioLines, title: 'Spoken, not typed', text: 'Answer out loud, the way you will on the day. When you finish, the interviewer picks it up from there.' },
   { icon: MessageSquareQuote, title: 'It responds to you', text: 'Credit where you were right, a one-line correction where you were not. Never a generic "thank you".' },
   { icon: Route, title: 'Follow-ups with intent', text: 'Strong answers lead deeper. When you are stuck, it explains the idea and moves on.' },
+  { icon: Layers, title: 'Four formats', text: 'Any topic, your own resume, a specific job post, or HR and behavioral questions, at your level.' },
   { icon: Captions, title: 'Live captions', text: 'Your words appear as you speak; the interviewer’s appear as they are said.' },
   { icon: Gauge, title: 'Feedback you can use', text: 'Scores for every question, a model answer, and your pace and filler words, measured.' },
-  { icon: FileSearch, title: 'ATS resume check', text: 'See how a screening system scores your resume against a job, what is missing, and what to fix first.' },
 ]
 
-// Quiet per-format tones (sage, clay, mist, honey) for icons and numbers.
+// Quiet tones cycled across feature icons (sage, clay, mist, honey).
 const TONES = Object.values(FORMAT_TONE).map((t) => t.chip)
-const NUMBER_TONES = ['text-brand-600', 'text-clay-600', 'text-mist-600', 'text-warning-600']
 
 const STEPS = [
   ['Choose', 'Pick a topic, your resume, a job post or behavioral questions. Set the level, the length and who interviews you.'],
@@ -45,9 +42,9 @@ function Container({ children, className = '' }: { children: ReactNode; classNam
 /** The product, shown as a quiet transcript card rather than a screenshot. */
 function TranscriptPreview() {
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden shadow-lift">
       <div className="flex items-center justify-between border-b border-ink-200 px-5 py-3.5 text-xs text-ink-500">
-        <span className="flex items-center gap-2"><span className="size-1.5 rounded-full bg-brand-600" /> Live · Bias–Variance · Fresher</span>
+        <span className="flex items-center gap-2"><span className="size-1.5 animate-pulse rounded-full bg-brand-600" /> Live · Bias–Variance · Fresher</span>
         <span className="tabular-nums">07:42</span>
       </div>
       <div className="space-y-5 px-5 py-6 text-[0.94rem] leading-relaxed">
@@ -80,46 +77,57 @@ export function LandingPage() {
 
   return (
     <div className="min-h-screen bg-paper">
-      {/* ---------------------------------------------------------------- header */}
-      <header className="border-b border-ink-200/80">
-        <Container className="flex h-[72px] items-center gap-4 md:gap-10">
+      {/* ---------------------------------------------------------------- header: the product's tools, not page sections */}
+      <header className="sticky top-0 z-30 border-b border-ink-200/80 bg-paper">
+        <Container className="flex h-[68px] items-center gap-4 md:gap-10">
           <Link to="/" aria-label="MockInterview home" className="shrink-0"><Logo /></Link>
-          <nav className="hidden gap-8 text-sm text-ink-500 md:flex" aria-label="Sections">
+          <nav className="hidden gap-7 text-sm whitespace-nowrap text-ink-500 lg:flex" aria-label="Product">
+            {TOOLS.map((t) => (
+              <a key={t.id} href={`#${t.id}`} className="transition-colors hover:text-ink-900">{t.name}</a>
+            ))}
             <a href="#how" className="transition-colors hover:text-ink-900">How it works</a>
-            <a href="#features" className="transition-colors hover:text-ink-900">Features</a>
-            <a href="#interviewers" className="transition-colors hover:text-ink-900">Interviewers</a>
           </nav>
           <div className="ml-auto flex items-center gap-1 whitespace-nowrap sm:gap-4">
             <Link to="/login" className="px-2 text-sm font-medium text-ink-700 transition-colors hover:text-ink-900">Log in</Link>
             {/* shorter label on phones so the bar never wraps */}
             <Link to="/register" className={buttonClass('primary', 'px-4 sm:px-5')}>
-              <span className="sm:hidden">Sign up</span><span className="hidden sm:inline">Start practising</span>
+              <span className="sm:hidden">Sign up</span><span className="hidden sm:inline">Start free</span>
             </Link>
           </div>
         </Container>
       </header>
 
-      {/* ---------------------------------------------------------------- hero */}
+      {/* ---------------------------------------------------------------- hero: what it is, all three tools, one action */}
       <section>
-        <Container className="grid items-center gap-14 pt-16 pb-20 sm:pt-24 sm:pb-28 lg:grid-cols-12 lg:gap-12">
+        <Container className="grid items-center gap-14 pt-14 pb-20 sm:pt-20 sm:pb-24 lg:grid-cols-12 lg:gap-12">
           <div className="lg:col-span-7">
-            <Eyebrow>Voice mock interviews</Eyebrow>
-            <h1 className="mt-6 text-[2.75rem] leading-[1.05] font-semibold sm:text-6xl lg:text-[4.25rem]">
+            <Eyebrow>Free interview coach</Eyebrow>
+            <h1 className="mt-5 text-[2.6rem] leading-[1.05] font-semibold sm:text-6xl lg:text-[4rem]">
               Practise the conversation, <em className="font-medium text-brand-700">not just the answers.</em>
             </h1>
-            <p className="mt-7 max-w-xl text-lg leading-relaxed text-ink-500">
-              An AI interviewer that speaks, listens and follows up on what you actually said, then
-              gives you an honest, detailed account of how it went.
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink-500">
+              Rehearse with an AI interviewer that speaks and listens, study the questions you&apos;ll be asked,
+              and check how your resume scores against the job. All in one place, free.
             </p>
-            <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-4">
+            <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
               <Link to="/register" className={buttonClass('primary', 'px-7 py-3 text-[0.95rem]')}>
-                Start your first interview <ArrowRight className="size-4" />
+                Start practising free <ArrowRight className="size-4" />
               </Link>
               <a href="#how" className="text-sm font-medium text-ink-700 underline decoration-ink-300 underline-offset-4 transition-colors hover:decoration-ink-700">
                 See how it works
               </a>
             </div>
-            <p className="mt-8 text-sm text-ink-400">Free to use · No camera recording · Best in Chrome or Edge</p>
+            {/* the three tools at a glance, each a jump link to its section */}
+            <ul className="mt-10 flex flex-wrap gap-2" aria-label="What you can do">
+              {TOOLS.map(({ id, name, icon: Icon, tone }) => (
+                <li key={id}>
+                  <a href={`#${id}`} className="flex items-center gap-2 rounded-full border border-ink-200 bg-white py-1.5 pr-3.5 pl-1.5 text-sm text-ink-700 transition-colors hover:border-ink-300 hover:text-ink-900">
+                    <span className={cn('flex size-6 items-center justify-center rounded-full', tone)}><Icon className="size-3.5" aria-hidden /></span>
+                    {name}
+                  </a>
+                </li>
+              ))}
+            </ul>
           </div>
           <div className="lg:col-span-5">
             <TranscriptPreview />
@@ -127,25 +135,39 @@ export function LandingPage() {
         </Container>
       </section>
 
-      {/* ---------------------------------------------------------------- interview types */}
+      {/* ---------------------------------------------------------------- the three tools */}
       <section className="border-y border-ink-200/80 bg-white">
-        <Container className="grid sm:grid-cols-2 lg:grid-cols-4">
-          {TYPES.map(([title, text], i) => (
-            <div key={title} className="border-ink-200/80 py-10 sm:px-8 sm:first:pl-0 lg:border-l lg:first:border-l-0 [&:nth-child(n+3)]:border-t sm:[&:nth-child(n+3)]:border-t lg:[&:nth-child(n+3)]:border-t-0 [&:nth-child(2)]:border-t sm:[&:nth-child(2)]:border-t-0">
-              <p className={cn('font-serif text-sm', NUMBER_TONES[i])}>0{i + 1}</p>
-              <p className="mt-3 font-serif text-xl font-semibold">{title}</p>
-              <p className="mt-2 text-sm leading-relaxed text-ink-500">{text}</p>
-            </div>
-          ))}
+        <Container className="py-20 sm:py-24">
+          <div className="max-w-2xl">
+            <Eyebrow>Three tools, one goal</Eyebrow>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold sm:text-[2.6rem]">Everything you need before the interview.</h2>
+          </div>
+          <div className="mt-12 grid gap-5 md:grid-cols-3">
+            {TOOLS.map(({ id, name, icon: Icon, tone, tagline, points, cta }) => (
+              <Card key={id} id={id} className="card-hover flex scroll-mt-24 flex-col p-7">
+                <span className={cn('flex size-11 items-center justify-center rounded-full', tone)}><Icon className="size-5" aria-hidden /></span>
+                <p className="mt-6 font-serif text-2xl font-semibold">{name}</p>
+                <p className="mt-2 text-[0.94rem] leading-relaxed text-ink-500">{tagline}</p>
+                <ul className="mt-5 flex-1 space-y-2.5 border-t border-ink-200 pt-5 text-sm text-ink-700">
+                  {points.map((p) => (
+                    <li key={p} className="flex gap-2.5"><Check className="mt-0.5 size-4 shrink-0 text-brand-600" aria-hidden />{p}</li>
+                  ))}
+                </ul>
+                <Link to="/register" className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-ink-900 underline decoration-ink-300 underline-offset-4 transition-colors hover:decoration-ink-900">
+                  {cta} <ArrowRight className="size-3.5" />
+                </Link>
+              </Card>
+            ))}
+          </div>
         </Container>
       </section>
 
-      {/* ---------------------------------------------------------------- how it works */}
-      <section id="how" className="scroll-mt-8">
-        <Container className="grid gap-12 py-24 sm:py-32 lg:grid-cols-12">
+      {/* ---------------------------------------------------------------- how a mock interview works */}
+      <section id="how" className="scroll-mt-20">
+        <Container className="grid gap-12 py-24 sm:py-28 lg:grid-cols-12">
           <div className="lg:col-span-4">
-            <Eyebrow>How it works</Eyebrow>
-            <h2 className="mt-5 text-4xl leading-tight font-semibold sm:text-5xl">Three steps, one honest conversation.</h2>
+            <Eyebrow>How a mock interview works</Eyebrow>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold sm:text-[2.6rem]">Three steps, one honest conversation.</h2>
           </div>
           <ol className="divide-y divide-ink-200 lg:col-span-7 lg:col-start-6">
             {STEPS.map(([title, text], i) => (
@@ -161,14 +183,14 @@ export function LandingPage() {
         </Container>
       </section>
 
-      {/* ---------------------------------------------------------------- features */}
-      <section id="features" className="scroll-mt-8 bg-paper-deep/60">
-        <Container className="py-24 sm:py-32">
+      {/* ---------------------------------------------------------------- what the interviewer does */}
+      <section className="bg-paper-deep/60">
+        <Container className="py-24 sm:py-28">
           <div className="max-w-2xl">
-            <Eyebrow>Features</Eyebrow>
-            <h2 className="mt-5 text-4xl leading-tight font-semibold sm:text-5xl">Built to feel like the real thing.</h2>
+            <Eyebrow>Inside the interview</Eyebrow>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold sm:text-[2.6rem]">Built to feel like the real thing.</h2>
           </div>
-          <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map(({ icon: Icon, title, text }, i) => (
               <Card key={title} className="card-hover p-7">
                 <span className={cn('flex size-10 items-center justify-center rounded-full', TONES[i % TONES.length])}><Icon className="size-[18px]" aria-hidden /></span>
@@ -180,25 +202,15 @@ export function LandingPage() {
         </Container>
       </section>
 
-      {/* ---------------------------------------------------------------- pull quote */}
-      <section>
-        <Container className="py-24 text-center sm:py-32">
-          <blockquote className="mx-auto max-w-3xl font-serif text-3xl leading-snug font-medium text-ink-900 italic sm:text-[2.6rem]">
-            “The best preparation for a conversation is a conversation.”
-          </blockquote>
-          <p className="mt-6 text-sm text-ink-400">The idea behind MockInterview</p>
-        </Container>
-      </section>
-
-      {/* ---------------------------------------------------------------- what you get */}
+      {/* ---------------------------------------------------------------- the report */}
       <section className="border-t border-ink-200/80 bg-white">
-        <Container className="grid items-center gap-14 py-24 sm:py-32 lg:grid-cols-2">
+        <Container className="grid items-center gap-14 py-24 sm:py-28 lg:grid-cols-2">
           <div>
             <Eyebrow>After every session</Eyebrow>
-            <h2 className="mt-5 text-4xl leading-tight font-semibold sm:text-5xl">A report worth reading.</h2>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold sm:text-[2.6rem]">A report worth reading.</h2>
             <ul className="mt-8 space-y-4 text-ink-500">
               {['A score for every question, calibrated to your level', 'What you got right, and exactly what was missing', 'A model outline of a strong answer', 'Speaking pace, filler words and answer length, measured'].map((t) => (
-                <li key={t} className="flex gap-3"><span className="mt-2.5 size-1.5 shrink-0 rounded-full bg-brand-600" />{t}</li>
+                <li key={t} className="flex gap-3"><Check className="mt-0.5 size-4 shrink-0 text-brand-600" aria-hidden />{t}</li>
               ))}
             </ul>
           </div>
@@ -224,13 +236,13 @@ export function LandingPage() {
       </section>
 
       {/* ---------------------------------------------------------------- interviewers */}
-      <section id="interviewers" className="scroll-mt-8 border-t border-ink-200/80">
-        <Container className="py-24 sm:py-32">
+      <section id="interviewers" className="scroll-mt-20 border-t border-ink-200/80">
+        <Container className="py-24 sm:py-28">
           <div className="max-w-2xl">
             <Eyebrow>Interviewers</Eyebrow>
-            <h2 className="mt-5 text-4xl leading-tight font-semibold sm:text-5xl">Choose who sits across the table.</h2>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold sm:text-[2.6rem]">Choose who sits across the table.</h2>
           </div>
-          <div className="mt-14 grid gap-5 md:grid-cols-3">
+          <div className="mt-12 grid gap-5 md:grid-cols-3">
             {INTERVIEWERS.map((p) => (
               <Card key={p.id} className="card-hover flex items-center gap-5 p-6">
                 <Avatar persona={p.id} />
@@ -245,22 +257,29 @@ export function LandingPage() {
       </section>
 
       {/* ---------------------------------------------------------------- closing CTA */}
-      <section className="pb-24 sm:pb-32">
+      <section className="pb-24 sm:pb-28">
         <Container>
-          <div className="rounded-3xl border border-ink-200 bg-paper-deep px-8 py-16 text-center sm:px-16 sm:py-20">
-            <h2 className="mx-auto max-w-2xl text-4xl leading-tight font-semibold sm:text-5xl">Your next interview is a conversation. Rehearse one.</h2>
-            <p className="mx-auto mt-5 max-w-md text-ink-500">It takes a minute to set up and five to practise.</p>
-            <Link to="/register" className={buttonClass('primary', 'mt-9 px-7 py-3 text-[0.95rem]')}>
+          <div className="rounded-3xl bg-ink-900 px-8 py-16 text-center text-paper sm:px-16 sm:py-20">
+            <h2 className="mx-auto max-w-2xl text-3xl leading-tight font-semibold text-paper sm:text-[2.6rem]">Your next interview is a conversation. Rehearse one.</h2>
+            <p className="mx-auto mt-5 max-w-md text-ink-300">Free, and ready in a minute. Five minutes is enough for your first session.</p>
+            <Link to="/register" className={buttonClass('secondary', 'mt-9 border-transparent px-7 py-3 text-[0.95rem]')}>
               Create a free account <ArrowRight className="size-4" />
             </Link>
           </div>
         </Container>
       </section>
 
+      {/* ---------------------------------------------------------------- footer */}
       <footer className="border-t border-ink-200/80">
-        <Container className="flex flex-col gap-4 py-10 text-sm text-ink-400 sm:flex-row sm:items-center sm:justify-between">
-          <Logo />
-          <p>Practise out loud. Improve with every session.</p>
+        <Container className="flex flex-col gap-6 py-10 text-sm text-ink-500 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2">
+            <Logo />
+            <p className="text-ink-400">Practise out loud. Improve with every session.</p>
+          </div>
+          <nav className="flex flex-wrap gap-x-6 gap-y-2" aria-label="Footer">
+            {TOOLS.map((t) => <a key={t.id} href={`#${t.id}`} className="transition-colors hover:text-ink-900">{t.name}</a>)}
+            <Link to="/login" className="transition-colors hover:text-ink-900">Log in</Link>
+          </nav>
         </Container>
       </footer>
     </div>

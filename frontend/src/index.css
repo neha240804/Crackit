@@ -37,6 +37,15 @@
   --color-mist-500: #7b8fa3;
   --color-mist-600: #5f7388;
   --color-mist-700: #4a5b6d;
+  /* two more quiet tones so the seven question-prep tracks each get their own colour */
+  --color-teal-50: #eaf2f0;
+  --color-teal-100: #d3e5e1;
+  --color-teal-600: #4f7f78;
+  --color-teal-700: #3d6660;
+  --color-plum-50: #f4eef3;
+  --color-plum-100: #e7dbe5;
+  --color-plum-600: #85607f;
+  --color-plum-700: #6a4c66;
 
   /* warm neutrals (text, borders, fills) */
   --color-ink-50: #faf9f6;
@@ -89,6 +98,21 @@
   &:hover {
     @apply -translate-y-0.5 border-ink-300 shadow-lift;
   }
+}
+
+/* Page entry: a 6 px rise. Deliberately transform-only (no opacity): when a browser pauses
+   animations (hidden tab), an opacity fade can freeze at 0 and hide content; a paused rise
+   only leaves the page 6 px low. */
+@keyframes page-rise {
+  from {
+    transform: translateY(6px);
+  }
+  to {
+    transform: none;
+  }
+}
+@utility page-enter {
+  animation: page-rise 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 /* Respect users who ask for less motion. */

@@ -131,17 +131,18 @@ build_report(): separate function, called after the interview
 | File | Responsibility |
 |---|---|
 | `frontend/src/App.tsx` | Routes: `/` landing, `/login`, `/register`; logged in: `/dashboard`, `/resume`, `/interviews/new`, `/interviews/:id/report` (light, `AppShell` top bar); `/interviews/:id` room (dark, full screen) |
-| `frontend/src/pages/LandingPage.tsx` | Public page: hero with an HTML conversation preview, features, how it works, interviewers |
-| `frontend/src/pages/DashboardPage.tsx` | Stats, the 4 interview formats (`/interviews/new?type=…`), full-width history, product info below the fold |
+| `frontend/src/features/product.ts` | **The three tools** (Mock interviews / Question prep / ATS check): one name, icon, colour, tagline and CTA each, shared by the landing page, app nav, dashboard and auth page. Change product wording here |
+| `frontend/src/pages/LandingPage.tsx` | Public page: hero naming all three tools (+ jump links), "three tools" section, how a mock interview works, interview features, report sample, interviewers, closing CTA |
+| `frontend/src/pages/DashboardPage.tsx` | Action first: unfinished interviews → the three tools (interview card holds the 4 formats, `/interviews/new?type=…`) → progress + history → habits and facts below the fold. No duplicate New-interview button (it's in the top bar) |
 | `frontend/src/pages/NewInterviewPage.tsx` | Device checks (fixed column) + interview settings (only this card scrolls on lg); reads `?type=` and `?topic=`; resume/JD formats pick or upload an interview resume (`features/resume/InterviewResumePicker.tsx`) and send `resume_id` |
 | `frontend/src/pages/InterviewRoomPage.tsx` | Full-screen "stage": interviewer centre, captions, small self-view, transcript drawer, bottom dock. Voice only (no typed answers). Phase machine `ready → speaking → listening → processing → …` |
 | `frontend/src/pages/InterviewReportPage.tsx` | Feedback report |
 | `frontend/src/pages/ResumePage.tsx` (`/resume`, nav "ATS check") | Check only: upload/select an ATS resume + optional JD → `POST /optimizer/analyze` → report (`features/ats/AtsReport.tsx`: score, action plan, missing keywords, gaps, format checks). The backend rewrite/DOCX endpoints still exist but have no UI |
-| `frontend/src/pages/PrepPage.tsx` (`/prep`, nav "Question prep") | Mode switch (two equal choice cards "By topic" / "From your resume") above ONE setup panel for the chosen mode, with a single action → study set; answers hidden until revealed, Got it / Review again marks, progress, "More questions", link to a mock interview. Sets saved in localStorage (`features/prep/api.ts`) |
+| `frontend/src/pages/PrepPage.tsx` (`/prep`, nav "Question prep") | "How it works" strip (pick / think then reveal / mark), mode switch ("By topic" / "From your resume"), numbered setup (colour-coded track tiles with icons → topic → level with a one-line meaning), live summary of what you will get, one action → study set (difficulty-coloured cards, progress ring); answers hidden until revealed, Got it / Review again marks, progress, "More questions", link to a mock interview. Sets saved in localStorage (`features/prep/api.ts`) |
 | `frontend/src/features/interview/media.ts` | Camera/mic, `AnswerRecorder` (VAD), `LiveCaptions`, `speak()` (server voice + adaptive buffering, browser fallback) |
 | `frontend/src/features/interview/api.ts` | API calls; converts `remaining_seconds` to `deadline_ms` outside render |
 | `frontend/src/components/AppShell.tsx`, `Brand.tsx` | Top bar layout, logo, score card; `Avatar` = original faceless SVG portraits per interviewer (maya / arjun / sara) |
-| `frontend/src/index.css` | Design tokens: `paper` (warm off-white), `brand-*` (sage), quiet `clay-*` / `mist-*` secondary tones (per-format `FORMAT_TONE` in `features/interview/constants.ts`), `ink-*` (warm neutrals), success/warning/danger; Fraunces serif headings + Inter. No gradients or glass effects |
+| `frontend/src/index.css` | Design tokens: `paper` (warm off-white), `brand-*` (sage), quiet `clay-*` / `mist-*` secondary tones (per-format `FORMAT_TONE` in `features/interview/constants.ts`), `teal-*` / `plum-*` (extra quiet tones for prep tracks), `ink-*` (warm neutrals), success/warning/danger; Fraunces serif headings + Inter. No gradients or glass effects |
 | `frontend/src/components/ui/styles.ts` | `buttonClass()` / `fieldClass` (kept out of `.tsx` so Fast Refresh works) |
 
 ### Voice pipeline (latency-critical)
