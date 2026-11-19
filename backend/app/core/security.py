@@ -5,6 +5,7 @@
   expiry ("exp"). The server verifies the signature on each request, so no session table.
 """
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -16,12 +17,31 @@ from app.core.config import settings
 ALGORITHM = "HS256"
 
 
+# bcrypt only uses the first 72 bytes, and bcrypt 5 raises ValueError beyond that (an
+# 80-character password once crashed /register with a 500). The schema enforces this limit.
+MAX_PASSWORD_BYTES = 72
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(password: str, password_hash: str) -> bool:
+    if len(password.encode()) > MAX_PASSWORD_BYTES:  # can't match a stored hash; don't crash
+        return False
     return bcrypt.checkpw(password.encode(), password_hash.encode())
+
+
+# bcrypt is slow ON PURPOSE (~200 ms of CPU here). Called directly inside an async route it
+# froze the whole event loop: measured, 20 simultaneous logins took 6.7 s and an unrelated
+# request waited 6.65 s behind them. The async versions run it in a worker thread instead
+# (bcrypt releases the GIL, so threads really run in parallel).
+async def hash_password_async(password: str) -> str:
+    return await asyncio.to_thread(hash_password, password)
+
+
+async def verify_password_async(password: str, password_hash: str) -> bool:
+    return await asyncio.to_thread(verify_password, password, password_hash)
 
 
 def create_access_token(user_id: uuid.UUID) -> str:

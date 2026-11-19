@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.optimizer.graph import optimizer_graph
 from app.core.config import DATA_DIR
 from app.db.models import JobDescription, Resume, ResumeVersion, User
+from app.db.session import release_connection
 from app.schemas.optimizer import (
     AnalysisResult,
     AtsReport,
@@ -67,11 +68,13 @@ def _analysis(out: dict) -> AnalysisResult:
 
 async def analyze(db: AsyncSession, user: User, req: OptimizeRequest) -> AnalysisResult:
     resume = await _ready_resume(db, user, req.resume_id)
+    await release_connection(db)  # no DB connection held during the LLM steps
     return _analysis(await _run(resume, req.jd_text, "analyze"))
 
 
 async def optimize(db: AsyncSession, user: User, req: OptimizeRequest) -> ResumeVersionOut:
     resume = await _ready_resume(db, user, req.resume_id)
+    await release_connection(db)
     out = await _run(resume, req.jd_text, "optimize")
     analysis = _analysis(out)
 

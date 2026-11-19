@@ -1,4 +1,4 @@
-"""Database tables for MockInterview AI (SQLAlchemy 2.0 typed ORM).
+"""Database tables for Crackit (SQLAlchemy 2.0 typed ORM).
 
 Only what the mock interview needs: users, their resumes (to personalise interviews),
 pasted job descriptions, interview sessions and per-question turns. LLM output (parsed
@@ -6,12 +6,13 @@ profiles, reports, scores) is stored as JSONB.
 """
 
 import uuid
+from datetime import date
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import TimestampedBase
+from app.db.base import Base, TimestampedBase
 
 
 def user_fk() -> Mapped[uuid.UUID]:
@@ -113,3 +114,20 @@ class InterviewTurn(TimestampedBase):
     feedback: Mapped[str | None] = mapped_column(Text)
 
     session: Mapped[InterviewSession] = relationship(back_populates="turns")
+
+
+class UsageCounter(Base):
+    """How many AI-backed actions a user ran on one day (UTC), per action.
+
+    Enforces the daily budget on the shared Groq key (services/usage.py). In the database,
+    not in memory, so a restart doesn't hand everyone a fresh allowance. One small row per
+    user, day and action; the composite primary key makes the increment a single upsert."""
+
+    __tablename__ = "usage_counters"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    action: Mapped[str] = mapped_column(String(30), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

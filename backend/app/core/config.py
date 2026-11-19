@@ -5,10 +5,12 @@ validates their types, and exposes them as one typed object. Every other module 
 `settings` from here instead of calling os.getenv() directly.
 """
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/app/core/config.py -> parents[3] is the repository root, where `.env` lives.
@@ -30,6 +32,11 @@ class Settings(BaseSettings):
     app_env: str = "development"
     secret_key: str = "change-me"
     access_token_expire_minutes: int = 1440
+    # Browser origins allowed to call the API, comma-separated in .env
+    # (e.g. CORS_ORIGINS=https://crackit.example.com). Dev default: the Vite server.
+    cors_origins: str = "http://localhost:5174"
+    # LangSmith tracing in production (sends user data to LangSmith). Off unless set to true.
+    trace_in_production: bool = False
 
     # PostgreSQL (own database and port, so it can run next to CareerPilot AI)
     postgres_user: str = "mockinterview"
@@ -37,6 +44,13 @@ class Settings(BaseSettings):
     postgres_db: str = "mockinterview"
     postgres_host: str = "localhost"
     postgres_port: int = 5434
+
+    # Connection pools. Requests release their DB connection before slow AI calls (see
+    # release_connection), so these cover the DB work of ~100 users, not their AI waits.
+    # Total (pool + overflow + checkpointer pool) must stay under Postgres max_connections (100).
+    db_pool_size: int = 20
+    db_max_overflow: int = 10
+    checkpoint_pool_size: int = 20
 
     # Qdrant
     qdrant_url: str = "http://localhost:6335"
@@ -58,6 +72,37 @@ class Settings(BaseSettings):
     embedding_dim: int = 384
 
     @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() in ("production", "prod")
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @model_validator(mode="after")
+    def refuse_unsafe_production_config(self) -> "Settings":
+        """Fail at startup rather than run production on development defaults.
+
+        The defaults below are fine on a laptop and dangerous on a server: with the default
+        SECRET_KEY anyone can sign a login token for any user id, and the default database
+        password is public (it's in this repo). A missing .env must stop the app, not
+        silently fall back to them."""
+        if not self.is_production:
+            return self
+        problems = []
+        if self.secret_key in ("change-me", "change-me-to-a-long-random-string") or len(self.secret_key) < 32:
+            problems.append("SECRET_KEY must be a random string of at least 32 characters")
+        if self.postgres_password == "mockinterview":
+            problems.append("POSTGRES_PASSWORD is still the development default")
+        if not self.groq_api_key:
+            problems.append("GROQ_API_KEY is missing")
+        if any(o.startswith("http://localhost") or o == "*" for o in self.cors_origin_list):
+            problems.append("CORS_ORIGINS must list the real site origin(s), not localhost or *")
+        if problems:
+            raise ValueError("Unsafe production settings: " + "; ".join(problems))
+        return self
+
+    @property
     def database_url(self) -> str:
         # "+asyncpg" tells SQLAlchemy to use the async driver.
         return (
@@ -72,3 +117,10 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+# LangSmith traces contain everything the AI saw: resumes, job posts, interview transcripts.
+# Useful while developing; in production it would send every user's data to a third party
+# without telling them (audit H7). Off in production unless explicitly re-enabled.
+if settings.is_production and not settings.trace_in_production:
+    os.environ["LANGSMITH_TRACING"] = "false"
+    os.environ["LANGCHAIN_TRACING_V2"] = "false"

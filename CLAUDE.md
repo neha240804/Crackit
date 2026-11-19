@@ -1,4 +1,9 @@
-# MockInterview AI
+# Crackit (repo: MockInterviewAI)
+
+**Brand:** the product is called **Crackit**, tagline *"Practice out loud, crack the real one."*
+(renamed from "MockInterview AI"). Use Crackit in anything users see. Internal identifiers keep
+the old name on purpose: storage keys `mockinterview_token` / `mockinterview_prep_v1` (renaming
+logs users out and drops saved prep sets), the database, containers and package names.
 
 Real-time **voice mock interviews**. Split out of the CareerPilot AI project
 (`C:/Users/Neha/code/CareerPilotAI`) so this repo contains only the interview product:
@@ -60,11 +65,12 @@ End ─────────────── POST /{id}/end ─────
 Report page ─────── POST /{id}/report ─────────────► build_report (strong LLM + code metrics), cached
 ```
 
-### Database (6 tables)
+### Database (7 tables)
 
 `users`, `resumes` (parsed profile JSONB, `purpose` interview|ats, one primary per purpose), `job_descriptions`, `resume_versions`
 (optimized rewrite + analysis JSONB + DOCX path), `interview_sessions`
-(config JSONB incl. `started_at`, `thread_id`, `report` JSONB), `interview_turns`.
+(config JSONB incl. `started_at`, `thread_id`, `report` JSONB), `interview_turns`,
+`usage_counters` (AI actions per user per UTC day, for the daily budget).
 LangGraph creates its own `checkpoint*` tables (Alembic ignores them).
 
 ### ATS optimizer graph (`backend/app/agents/optimizer/graph.py`)
@@ -228,6 +234,22 @@ https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1 (full 
 - **React:** no `Date.now()` during render (compute deadlines in API helpers); keep mutable
   loop state in refs; `useInterview` uses `staleTime: Infinity`, so invalidate the cache when
   the interview finishes.
+- **Don't hold a DB connection across an AI call.** The first query of a request opens a
+  transaction that keeps its pooled connection until commit; call `release_connection(db)`
+  (`db/session.py`) before any Groq/Whisper call. Without it ~15 in-flight AI calls exhausted
+  the pool. Pool sizes live in `config.py` (`db_pool_size`, `checkpoint_pool_size`).
+- **CPU-heavy sync work goes to a thread** (`asyncio.to_thread`): bcrypt in an async route
+  froze the event loop (20 logins: 6.7 s, unrelated requests waited 6.65 s; now ~2 s / 0.3 s).
+  Passwords are capped at 72 bytes (bcrypt 5 raises above that: it was a 500).
+- **Limits (abuse protection):** per-minute limits per user/IP live in memory
+  (`core/rate_limit.py`, `per_user()` / `per_ip()` route dependencies; single process only).
+  Daily AI budget per user is in Postgres (`services/usage.py`, `ai_budget()` wraps the route
+  call; charged only on success; an interview counts once, never its answers). `/tts` only
+  voices chunks registered by `presynthesize()` (403 otherwise). LangSmith tracing is forced
+  off when `APP_ENV=production` unless `TRACE_IN_PRODUCTION=true`.
+- **`APP_ENV=production`** makes startup fail on development defaults (SECRET_KEY, DB
+  password, localhost/`*` CORS, missing Groq key) and hides `/docs`. CORS origins come from
+  `CORS_ORIGINS` in `.env`. Tests: `tests/test_hardening.py`.
 - **Editing code with scripts:** shell/Python string escaping has turned `\n` into real newlines
   (and broke on `\U` in Windows paths) several times. Prefer direct file edits for code
   containing escapes, regexes or Windows paths.

@@ -40,6 +40,32 @@ class TTSUnavailable(Exception):
     pass
 
 
+class NotAllowed(Exception):
+    """The text isn't an interviewer line this server produced."""
+
+
+# Only lines the interviewer actually said may be voiced (audit C2). /tts used to accept any
+# text from any logged-in user: a script could keep the single-file generator busy with
+# arbitrary text and stall every interview's voice. Every chunk handed to the browser goes
+# through presynthesize(), which registers it here; /tts refuses anything else. Bounded LRU:
+# lines expire once ~2,000 newer ones were spoken (far more than any interview in progress).
+_allowed: OrderedDict[str, None] = OrderedDict()
+_ALLOWED_SIZE = 2000
+
+
+def allow(chunks: list[str]) -> None:
+    for chunk in chunks:
+        key = normalize_for_speech(chunk)
+        _allowed[key] = None
+        _allowed.move_to_end(key)
+    while len(_allowed) > _ALLOWED_SIZE:
+        _allowed.popitem(last=False)
+
+
+def is_allowed(text: str) -> bool:
+    return normalize_for_speech(text) in _allowed
+
+
 def load_model() -> None:
     """Load Kokoro (blocking; call from a thread). Safe to call more than once."""
     global _model, _load_error
@@ -194,7 +220,9 @@ def _remember(key: tuple[str, str], task: asyncio.Task) -> None:
 
 
 async def synthesize(text: str, interviewer: str) -> bytes:
-    """Return WAV audio for `text`, or raise TTSUnavailable."""
+    """Return WAV audio for `text`, or raise TTSUnavailable / NotAllowed."""
+    if not is_allowed(text):
+        raise NotAllowed("Only interviewer lines can be voiced")
     if _model is None:
         raise TTSUnavailable(_load_error or "Voice model is still loading")
     text = normalize_for_speech(text)
@@ -225,6 +253,7 @@ def presynthesize(text: str, interviewer: str, stream: str = "default") -> list[
     generator is single-file, so in testing a stale backlog pushed first audio to ~10 s.
     """
     chunks = speech_chunks(text)
+    allow(chunks)  # register first: the browser may request these even while the model loads
     if _model is None or not chunks:
         return chunks
     _latest_line[stream] = text

@@ -3,7 +3,9 @@ so a password hash can never leak into a response."""
 
 import uuid
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from app.core.security import MAX_PASSWORD_BYTES
 
 
 class RegisterRequest(BaseModel):
@@ -11,10 +13,18 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8)
     name: str = Field(min_length=1, max_length=120)
 
+    @field_validator("password")
+    @classmethod
+    def fits_bcrypt(cls, value: str) -> str:
+        # Bytes, not characters: bcrypt's 72 limit is on the UTF-8 encoding (an emoji is 4).
+        if len(value.encode()) > MAX_PASSWORD_BYTES:
+            raise ValueError(f"Password is too long (max {MAX_PASSWORD_BYTES} bytes)")
+        return value
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(max_length=256)  # longer can't be a real password; skip the work
 
 
 class TokenResponse(BaseModel):

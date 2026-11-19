@@ -14,6 +14,7 @@ from app.agents.interview import runtime
 from app.agents.interview.graph import answered_pairs, build_report, remaining_seconds
 from app.agents.profile.sources import build_sources, format_sources
 from app.db.models import InterviewSession, InterviewTurn, JobDescription, Resume, User
+from app.db.session import release_connection
 from app.schemas.interview import (
     PERSONAS,
     InterviewConfig,
@@ -179,6 +180,7 @@ async def transcribe_only(
     after ~1 s of silence, so the text is ready when the 2 s auto-submit fires (if the
     candidate keeps talking, the browser just discards it)."""
     session = await _get_session(db, user, session_id)
+    await release_connection(db)  # don't hold a DB connection during Whisper
     data = await audio.read()
     if len(data) > MAX_AUDIO_BYTES:
         raise HTTPException(413, "Recording is too long")
@@ -197,6 +199,7 @@ async def answer(
 ) -> InterviewTurnOut:
     session = await _get_session(db, user, session_id)
     pending = await _ensure_waiting(session)
+    await release_connection(db)  # Whisper + the interviewer LLM can take seconds
 
     if audio is not None:
         data = await audio.read()
@@ -260,6 +263,7 @@ async def report(db: AsyncSession, user: User, session_id: uuid.UUID) -> dict:
     if session.status != "completed":
         raise HTTPException(409, "Finish the interview first")
     values = (await runtime.get_graph().aget_state(_cfg(session))).values
+    await release_connection(db)  # the report LLM call is the slowest one (~10-30 s)
     try:
         result = await build_report(values)
     except Exception as exc:

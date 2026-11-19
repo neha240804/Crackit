@@ -6,9 +6,9 @@ out). Field descriptions are instructions to the model.
 """
 
 import uuid
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 Experience = Literal["fresher", "1-3", "3-5", "5+"]
 
@@ -43,7 +43,8 @@ class PrepRequest(BaseModel):
     experience: Experience = "fresher"
     count: int = Field(6, ge=3, le=10)
     # Questions already shown, so "More questions" never repeats them.
-    exclude: list[str] = Field(default_factory=list, max_length=60)
+    # Each item is limited too: they are pasted into the prompt (generous for one question; only the last 40 reach the prompt).
+    exclude: list[Annotated[str, StringConstraints(max_length=600)]] = Field(default_factory=list, max_length=60)
 
     @model_validator(mode="after")
     def topic_or_resume(self) -> "PrepRequest":

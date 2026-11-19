@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.common.llm import get_structured_llm
 from app.agents.profile.sources import build_sources, format_sources
 from app.db.models import User
+from app.db.session import release_connection
 from app.rag.knowledge_base import RELEVANT_SCORE, load_documents, search_knowledge_base
 from app.schemas.prep import PrepRequest, PrepSet, PrepSetOut, PrepTrack
 from app.schemas.profile import CandidateProfile
@@ -134,6 +135,7 @@ async def generate(db: AsyncSession, user: User, req: PrepRequest) -> PrepSetOut
         human = (f"TOPIC: {topic}\n\nCURATED SYLLABUS (questions real interviews ask, and what "
                  f"good answers cover):\n{syllabus}\n\nALREADY ASKED:\n{asked}")
     # (count + 2 above: two spares, because near-repeats are filtered out below.)
+    await release_connection(db)  # no DB connection held during the LLM call
     try:
         llm = get_structured_llm(PrepSet, tier="fast", temperature=0.5)
         result: PrepSet = await llm.ainvoke([SystemMessage(system), HumanMessage(human)])

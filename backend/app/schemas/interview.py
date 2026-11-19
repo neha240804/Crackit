@@ -2,9 +2,9 @@
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 InterviewType = Literal["topic", "resume", "jd", "hr"]
 Experience = Literal["fresher", "1-3", "3-5", "5+"]
@@ -25,7 +25,9 @@ EXPERIENCE_LABEL = {
 class InterviewConfig(BaseModel):
     interview_type: InterviewType
     topic: str | None = Field(None, max_length=120, description="Domain/role, e.g. 'Bias-Variance'")
-    subtopics: list[str] = Field(default_factory=list, max_length=10)
+    # Limit the length of each item too, not just how many: these go into every prompt, so
+    # an unbounded string would inflate token use (and cost) on every interviewer turn.
+    subtopics: list[Annotated[str, StringConstraints(max_length=120)]] = Field(default_factory=list, max_length=10)
     experience: Experience = "fresher"
     duration_minutes: Literal[5, 10, 15] = 5
     interviewer: Literal["maya", "arjun", "sara"] = "maya"

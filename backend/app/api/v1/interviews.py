@@ -6,6 +6,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.rate_limit import per_user
 from app.schemas.interview import (
     InterviewConfig,
     InterviewSessionOut,
@@ -15,6 +16,7 @@ from app.schemas.interview import (
 )
 from app.services import interview_service as svc
 from app.services import tts
+from app.services.usage import ai_budget
 
 router = APIRouter(prefix="/interviews", tags=["mock interview"])
 
@@ -25,7 +27,10 @@ class TTSRequest(BaseModel):
 
 
 # Declared before /{session_id} routes so "tts" isn't parsed as a session id.
-@router.post("/tts", responses={200: {"content": {"audio/wav": {}}}, 503: {}})
+# Limits per user (audit H2). Sized for real use with room to spare: one interviewer line is
+# 1-4 voice chunks and a candidate answers every ~20-40 s; scripts are the ones that hit them.
+@router.post("/tts", responses={200: {"content": {"audio/wav": {}}}, 503: {}},
+             dependencies=[per_user("tts", times=120, seconds=60)])
 async def text_to_speech(body: TTSRequest, user: CurrentUser) -> Response:
     """Natural interviewer voice (local Kokoro). 503 = use the browser voice instead.
 
@@ -35,16 +40,21 @@ async def text_to_speech(body: TTSRequest, user: CurrentUser) -> Response:
         audio = await tts.synthesize(body.text, body.interviewer)
     except tts.TTSUnavailable as exc:
         raise HTTPException(503, str(exc)) from exc
+    except tts.NotAllowed as exc:
+        raise HTTPException(403, str(exc)) from exc
     return Response(audio, media_type="audio/wav", headers={
         "Cache-Control": "private, no-store",
         "X-Gen-Per-Audio": str(tts.gen_per_audio()),
     })
 
 
-@router.post("", response_model=InterviewSessionOut, status_code=201)
+@router.post("", response_model=InterviewSessionOut, status_code=201,
+             dependencies=[per_user("interview-start", times=5, seconds=600)])
 async def start_interview(config: InterviewConfig, user: CurrentUser, db: DbSession):
-    """Create a session; returns the interviewer's opening line."""
-    return await svc.start(db, user, config)
+    """Create a session; returns the interviewer's opening line. Counts against the daily
+    allowance once; answers and the report within it don't."""
+    async with ai_budget(db, user, "interview"):
+        return await svc.start(db, user, config)
 
 
 @router.get("", response_model=list[InterviewSummaryOut])
@@ -64,7 +74,8 @@ async def begin_interview(session_id: uuid.UUID, user: CurrentUser, db: DbSessio
     return await svc.begin(db, user, session_id)
 
 
-@router.post("/{session_id}/transcribe", response_model=TranscriptOut)
+@router.post("/{session_id}/transcribe", response_model=TranscriptOut,
+             dependencies=[per_user("transcribe", times=40, seconds=60)])
 async def transcribe(
     session_id: uuid.UUID, user: CurrentUser, db: DbSession, audio: Annotated[UploadFile, File()]
 ):
@@ -72,7 +83,8 @@ async def transcribe(
     return await svc.transcribe_only(db, user, session_id, audio)
 
 
-@router.post("/{session_id}/answer", response_model=InterviewTurnOut)
+@router.post("/{session_id}/answer", response_model=InterviewTurnOut,
+             dependencies=[per_user("answer", times=20, seconds=60)])
 async def answer(
     session_id: uuid.UUID,
     user: CurrentUser,
@@ -90,7 +102,7 @@ async def end_interview(session_id: uuid.UUID, user: CurrentUser, db: DbSession)
     return await svc.end(db, user, session_id)
 
 
-@router.post("/{session_id}/report")
+@router.post("/{session_id}/report", dependencies=[per_user("report", times=6, seconds=60)])
 async def report(session_id: uuid.UUID, user: CurrentUser, db: DbSession) -> dict:
     """Generate (once) and return the feedback report."""
     return await svc.report(db, user, session_id)

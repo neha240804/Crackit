@@ -5,22 +5,27 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.rate_limit import per_user
 from app.schemas.optimizer import AnalysisResult, OptimizeRequest, ResumeVersionOut
 from app.services import optimizer_service as svc
+from app.services.usage import ai_budget
 
 router = APIRouter(prefix="/optimizer", tags=["resume optimizer"])
 
 
-@router.post("/analyze", response_model=AnalysisResult)
+@router.post("/analyze", response_model=AnalysisResult, dependencies=[per_user("ats", times=6, seconds=60)])
 async def analyze(req: OptimizeRequest, user: CurrentUser, db: DbSession):
     """Fast ATS check (~5 s): format rules, and with a JD, keyword match + gap analysis."""
-    return await svc.analyze(db, user, req)
+    async with ai_budget(db, user, "ats"):
+        return await svc.analyze(db, user, req)
 
 
-@router.post("/optimize", response_model=ResumeVersionOut, status_code=201)
+@router.post("/optimize", response_model=ResumeVersionOut, status_code=201,
+             dependencies=[per_user("ats-rewrite", times=3, seconds=60)])
 async def optimize(req: OptimizeRequest, user: CurrentUser, db: DbSession):
     """Full rewrite with fact verification (~30-90 s). Saves a new resume version."""
-    return await svc.optimize(db, user, req)
+    async with ai_budget(db, user, "ats"):
+        return await svc.optimize(db, user, req)
 
 
 @router.get("/resumes/{resume_id}/versions", response_model=list[ResumeVersionOut])

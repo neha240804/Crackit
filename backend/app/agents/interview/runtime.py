@@ -24,7 +24,7 @@ def _conninfo() -> str:
 async def start() -> None:
     global _pool, _graph
     _pool = AsyncConnectionPool(
-        _conninfo(), open=False, max_size=10,
+        _conninfo(), open=False, max_size=settings.checkpoint_pool_size,
         kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
     )
     await _pool.open()
