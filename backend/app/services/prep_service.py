@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.common.llm import get_structured_llm
 from app.agents.profile.sources import build_sources, format_sources
 from app.db.models import User
-from app.rag.knowledge_base import load_documents, search_knowledge_base
+from app.rag.knowledge_base import RELEVANT_SCORE, load_documents, search_knowledge_base
 from app.schemas.prep import PrepRequest, PrepSet, PrepSetOut, PrepTrack
 from app.schemas.profile import CandidateProfile
 from app.services.resume_service import get_resume
@@ -36,9 +36,14 @@ TRACK_LABELS = {
     "managerial": "Managerial",
 }
 
+# "Fresher" means a graduate being interviewed for a first job, NOT a beginner: it used to say
+# "mostly easy ... fundamentals and definitions", which produced textbook one-liners, far below
+# real campus, PSU and core-company interviews.
 LEVEL_MIX = {
-    "fresher": "mostly easy, a few medium; fundamentals and definitions with simple examples",
-    "1-3": "mostly medium, some easy and one or two hard; practical, hands-on experience",
+    "fresher": "graduate entry level, as asked in campus placements, PSU and core-company "
+               "interviews: core concepts with the why and how, standard results and their "
+               "intuition, comparisons, and short problems; mostly medium, one or two easy, one hard",
+    "1-3": "mostly medium with some hard; applied problems, debugging and decisions from real work",
     "3-5": "mostly medium and hard; trade-offs, debugging and design decisions",
     "5+": "mostly hard; architecture, scale, leadership of technical decisions",
 }
@@ -49,8 +54,16 @@ Write {count} DISTINCT interview questions on the topic, each with a model answe
 Level: {level} ({mix}).
 
 Rules:
-- Questions are what a real interviewer asks at this level. Vary them: definitions,
-  "how would you", comparisons, a small scenario. No trick questions.
+- EVERY question must be about the TOPIC itself. Use the curated syllabus only where it is
+  about this topic; if there is none, follow the standard university syllabus for the subject
+  and how it is really examined in interviews (core companies, PSUs and campus placements for
+  engineering and science; product companies for software).
+- Questions are what a real interviewer asks at this level. Vary them: why/how, comparisons,
+  standard results, a small scenario. Avoid bare "What is X?" definitions unless the question
+  also asks why or how. No trick questions.
+- For engineering, science and maths subjects, include analysis: why something is done, what
+  happens when a condition changes, and at least one short numerical problem whose answer
+  works the numbers out briefly in words.
 - The model answer is something a strong candidate would SAY: start with a direct one-sentence
   answer, then explain briefly with one concrete example. 3-6 sentences, plain text, no markdown.
 - For behavioral topics, answer in STAR form (situation, task, action, result) with a
@@ -110,10 +123,13 @@ async def generate(db: AsyncSession, user: User, req: PrepRequest) -> PrepSetOut
     else:
         topic = (req.topic or "").strip()
         # Retrieval is sync (FastEmbed + Qdrant client): run it in a thread.
+        # Only sections that really match (RELEVANT_SCORE): an unrelated "syllabus" made the
+        # model write SQL questions for "power system".
         docs = await asyncio.to_thread(
-            search_knowledge_base, topic, 3, "questions", req.track or None
+            search_knowledge_base, topic, 3, "questions", req.track or None, RELEVANT_SCORE
         )
-        syllabus = "\n\n".join(d.page_content for d in docs) or "(no curated material: use your knowledge)"
+        syllabus = "\n\n".join(d.page_content for d in docs) or (
+            "(none for this topic: use the standard syllabus and real interview practice for it)")
         system = PREP_PROMPT.format(count=req.count + 2, level=req.experience, mix=LEVEL_MIX[req.experience])
         human = (f"TOPIC: {topic}\n\nCURATED SYLLABUS (questions real interviews ask, and what "
                  f"good answers cover):\n{syllabus}\n\nALREADY ASKED:\n{asked}")

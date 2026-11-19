@@ -208,6 +208,13 @@ https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1 (full 
   falls back to the other model on rate limit / 5xx / invalid JSON; keep `max_retries=1`
   (more retries meant ~8 s of silence). Keep the interviewer prompt small (2 KB sections,
   last 10 messages, ~1.8k tokens/turn).
+- **RAG always returns k results, even unrelated ones.** The question bank covers software,
+  data, HR and managerial topics only; for "power system" a plain top-k returned backend/SQL
+  sections, the model treated them as the syllabus and wrote SQL questions. Question-bank
+  searches use `min_score=RELEVANT_SCORE` (0.65, measured in `rag/knowledge_base.py`); with no
+  match the prompt says to use the subject's standard syllabus instead.
+- **"Fresher" means a graduate, not a beginner.** The old level text ("easy ... definitions")
+  produced textbook one-liners for core subjects; it now asks for campus/PSU-level depth.
 - **Never label every failure "rate limit".** `_ai_error()` logs the real exception; a blanket
   message once hid a schema bug.
 - **Stuck state:** if the interviewer step fails after the answer was recorded, the graph waits

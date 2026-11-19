@@ -65,9 +65,24 @@ def ingest_knowledge_base() -> int:
     return len(docs)
 
 
+# Minimum similarity for a question-bank section to count as "about this topic".
+# A plain top-k search ALWAYS returns k sections, however unrelated: for "power system" it
+# returned backend system design, SQL and deep learning, the model treated them as the
+# syllabus, and produced SQL questions. Measured (bge-small cosine, best match per query):
+#   topics the bank covers:  0.61-0.79 (e.g. React hooks 0.70, REST API design 0.77)
+#   topics it doesn't cover: 0.49-0.63 (power system 0.52, load flow 0.63, accounting 0.63)
+# The ranges overlap, so the cut-off favours precision: a missed match only means the model
+# uses its own knowledge (fine for SQL or pandas), while a false match misleads it.
+# 0.65 excluded all 12 off-bank subjects tested and kept 10 of 12 on-bank ones.
+RELEVANT_SCORE = 0.65
+
+
 def search_knowledge_base(
-    query: str, k: int = 4, doc_type: str | None = None, role_family: str | None = None
+    query: str, k: int = 4, doc_type: str | None = None, role_family: str | None = None,
+    min_score: float | None = None,
 ) -> list[Document]:
+    """Top-k question-bank sections for `query`. With `min_score`, sections below that
+    similarity are dropped, so an off-topic query returns nothing rather than noise."""
     conditions = []
     if doc_type:
         conditions.append(models.FieldCondition(
@@ -76,7 +91,11 @@ def search_knowledge_base(
         conditions.append(models.FieldCondition(
             key="metadata.role_family", match=models.MatchValue(value=role_family)))
     flt = models.Filter(must=conditions) if conditions else None
-    return get_vectorstore(KNOWLEDGE_BASE).similarity_search(query, k=k, filter=flt)
+    store = get_vectorstore(KNOWLEDGE_BASE)
+    if min_score is None:
+        return store.similarity_search(query, k=k, filter=flt)
+    hits = store.similarity_search_with_score(query, k=k, filter=flt)
+    return [doc for doc, score in hits if score >= min_score]
 
 
 def get_rubrics() -> str:

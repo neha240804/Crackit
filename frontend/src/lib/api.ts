@@ -39,7 +39,14 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   }
   // For FormData we must NOT set Content-Type: the browser adds the multipart boundary.
 
-  const response = await fetch(BASE + path, { ...rest, headers: finalHeaders, body })
+  let response: Response
+  try {
+    response = await fetch(BASE + path, { ...rest, headers: finalHeaders, body })
+  } catch {
+    // fetch() itself failed: no response at all (server stopped, connection dropped, offline).
+    // The browser's own message is just "Failed to fetch", which tells the user nothing.
+    throw new ApiError(0, "Can't reach the MockInterview server. Check that it's running and try again.")
+  }
 
   if (response.status === 401 && token) {
     tokenStore.clear()

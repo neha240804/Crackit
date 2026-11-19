@@ -245,8 +245,16 @@ Write {count} DISTINCT interview questions on the topic, each with a model answe
 Level: {level} ({mix}).
 
 Rules:
-- Questions are what a real interviewer asks at this level. Vary them: definitions,
-  "how would you", comparisons, a small scenario. No trick questions.
+- EVERY question must be about the TOPIC itself. Use the curated syllabus only where it is
+  about this topic; if there is none, follow the standard university syllabus for the subject
+  and how it is really examined in interviews (core companies, PSUs and campus placements for
+  engineering and science; product companies for software).
+- Questions are what a real interviewer asks at this level. Vary them: why/how, comparisons,
+  standard results, a small scenario. Avoid bare "What is X?" definitions unless the question
+  also asks why or how. No trick questions.
+- For engineering, science and maths subjects, include analysis: why something is done, what
+  happens when a condition changes, and at least one short numerical problem whose answer
+  works the numbers out briefly in words.
 - The model answer is something a strong candidate would SAY: start with a direct one-sentence
   answer, then explain briefly with one concrete example. 3-6 sentences, plain text, no markdown.
 - For behavioral topics, answer in STAR form (situation, task, action, result) with a
@@ -259,8 +267,8 @@ Rules:
 
 **Level mix (`{mix}`)**
 
-- `fresher`: mostly easy, a few medium; fundamentals and definitions with simple examples
-- `1-3`: mostly medium, some easy and one or two hard; practical, hands-on experience
+- `fresher`: graduate entry level, as asked in campus placements, PSU and core-company interviews: core concepts with the why and how, standard results and their intuition, comparisons, and short problems; mostly medium, one or two easy, one hard
+- `1-3`: mostly medium with some hard; applied problems, debugging and decisions from real work
 - `3-5`: mostly medium and hard; trade-offs, debugging and design decisions
 - `5+`: mostly hard; architecture, scale, leadership of technical decisions
 

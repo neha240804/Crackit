@@ -28,7 +28,7 @@ from app.agents.interview.prompts import (
     REPORT_PROMPT,
     SWITCH_PROMPT,
 )
-from app.rag.knowledge_base import get_rubrics, search_knowledge_base
+from app.rag.knowledge_base import RELEVANT_SCORE, get_rubrics, search_knowledge_base
 from app.schemas.interview import (
     EXPERIENCE_LABEL,
     PERSONAS,
@@ -85,9 +85,12 @@ def prepare_node(state: InterviewState) -> dict:
         "behavioral teamwork motivation strengths" if cfg["interview_type"] == "hr" else "",
         state.get("context", "")[:600],
     ])) or "general interview questions"
-    docs = search_knowledge_base(query, k=4, doc_type="questions")
+    # Only sections that really match: for subjects the bank doesn't cover (e.g. power
+    # systems) a plain top-k returned unrelated software sections as the "reference".
+    docs = search_knowledge_base(query, k=4, doc_type="questions", min_score=RELEVANT_SCORE)
     kb = "\n\n".join(f"[{d.metadata['source']} / {d.metadata['topic']}]\n{d.page_content}"
-                     for d in docs)
+                     for d in docs) or (
+        "(none for this topic: ask what real interviews at this level ask about it)")
     # The clock does NOT start here: it starts when the candidate presses Start (begin()).
     # Starting it at creation expired interviews while people were still in the setup screen.
     return {"kb": kb, "messages": [], "deadline": None}
