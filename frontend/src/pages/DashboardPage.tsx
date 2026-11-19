@@ -3,13 +3,13 @@
 //   formats, question prep, ATS check) → progress and history → habits and how it works.
 // The one "New interview" button lives in the top bar, so the page doesn't repeat it.
 
-import { ArrowRight, ArrowUpRight, BookOpen, Briefcase, FileText, KeyRound, Users } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, BookOpen, Briefcase, ChevronDown, ChevronUp, FileText, KeyRound, Search, Users } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 
 import { PageHeader } from '@/components/AppShell'
 import { Card, ErrorAlert, Eyebrow, Spinner } from '@/components/ui'
-import { buttonClass } from '@/components/ui/styles'
+import { buttonClass, fieldClass } from '@/components/ui/styles'
 import { useGroqKey, useUsage } from '@/features/account/api'
 import { useAuth } from '@/features/auth/context'
 import { useInterviews } from '@/features/interview/api'
@@ -17,11 +17,77 @@ import { FORMAT_TONE } from '@/features/interview/constants'
 import { loadSets } from '@/features/prep/api'
 import { toolById } from '@/features/product'
 import { useResumes } from '@/features/resume/api'
-import type { InterviewType } from '@/lib/types'
+import type { InterviewSummary, InterviewType } from '@/lib/types'
 import { cn, formatDate } from '@/lib/utils'
 
 function scoreTone(score: number) {
   return score >= 75 ? 'text-success-700' : score >= 55 ? 'text-warning-700' : 'text-danger-700'
+}
+
+const RECENT = 5 // rows shown before "Show all"
+const ROW_GRID = 'grid-cols-[1fr_auto_24px] md:grid-cols-[1fr_140px_100px_80px_24px]'
+
+/** Interview history. It grows with every interview, so the dashboard shows only the most
+ * recent few; "Show all" opens the full list inside its own scrolling box (with a search),
+ * so the page below it (habits, how it works) stays in reach however long the history is.
+ * The old list showed up to 20 rows inline and silently dropped everything older. */
+function HistoryList({ done }: { done: InterviewSummary[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+  const rows = expanded ? done.filter((i) => !q || i.title.toLowerCase().includes(q)) : done.slice(0, RECENT)
+
+  return (
+    <div className="mt-6">
+      {expanded && done.length > RECENT && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <label className="relative block w-full max-w-xs">
+            <span className="sr-only">Search interviews</span>
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-400" aria-hidden />
+            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by title"
+              className={cn(fieldClass, 'py-2 pl-9')} />
+          </label>
+          <span className="text-sm text-ink-400">{rows.length} of {done.length}</span>
+        </div>
+      )}
+      {/* expanded: a fixed-height box that scrolls on its own; the header stays visible */}
+      <div className={cn(expanded && 'max-h-[28rem] overflow-y-auto overscroll-contain rounded-2xl border border-ink-200 bg-white/50')}>
+        <div className={cn('sticky top-0 z-10 hidden gap-6 px-3 py-2 text-xs font-medium tracking-[0.12em] text-ink-400 uppercase md:grid',
+          ROW_GRID, expanded ? 'border-b border-ink-200 bg-paper' : 'bg-paper')}>
+          <span>Interview</span><span>Date</span><span>Length</span><span className="text-right">Score</span><span />
+        </div>
+        <ul className={cn('divide-y divide-ink-200', !expanded && 'max-md:mt-4')}>
+          {rows.map((i) => (
+            <li key={i.id}>
+              <Link to={`/interviews/${i.id}/report`}
+                className={cn('group grid items-center gap-6 rounded-xl px-3 py-4 transition-colors hover:bg-white', ROW_GRID)}>
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-ink-900">{i.title}</p>
+                  <p className="mt-1 text-sm text-ink-500 md:hidden">{formatDate(i.created_at)} · {i.duration_minutes} min</p>
+                </div>
+                <span className="hidden text-sm text-ink-500 md:block">{formatDate(i.created_at)}</span>
+                <span className="hidden text-sm text-ink-500 md:block">{i.duration_minutes} min</span>
+                {i.overall_score != null
+                  ? <span className={cn('text-right font-serif text-2xl font-semibold tabular-nums', scoreTone(i.overall_score))}>{i.overall_score}</span>
+                  : <span className="text-right text-sm text-ink-400">Report</span>}
+                <ArrowUpRight className="size-4 text-ink-400 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-ink-900" aria-hidden />
+              </Link>
+            </li>
+          ))}
+          {expanded && rows.length === 0 && (
+            <li className="px-3 py-8 text-center text-sm text-ink-500">No interviews match "{query}".</li>
+          )}
+        </ul>
+      </div>
+      {done.length > RECENT && (
+        <button type="button" onClick={() => { setExpanded(!expanded); setQuery('') }}
+          className="mt-4 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-ink-700 transition-colors hover:bg-ink-900/[0.05] hover:text-ink-900"
+          aria-expanded={expanded}>
+          {expanded ? <>Show recent only <ChevronUp className="size-4" aria-hidden /></> : <>Show all {done.length} interviews <ChevronDown className="size-4" aria-hidden /></>}
+        </button>
+      )}
+    </div>
+  )
 }
 
 const MODES: { type: InterviewType; icon: typeof BookOpen; title: string; text: string; needsResume?: boolean }[] = [
@@ -178,32 +244,7 @@ export function DashboardPage() {
             <Link to="/interviews/new" className={buttonClass('primary', 'mt-6')}>Start your first interview <ArrowRight className="size-4" /></Link>
           </div>
         )}
-        {done.length > 0 && (
-          <>
-            <div className="mt-6 hidden grid-cols-[1fr_140px_100px_80px_24px] gap-6 px-3 pb-2 text-xs font-medium tracking-[0.12em] text-ink-400 uppercase md:grid">
-              <span>Interview</span><span>Date</span><span>Length</span><span className="text-right">Score</span><span />
-            </div>
-            <ul className="divide-y divide-ink-200 max-md:mt-4">
-              {done.slice(0, 20).map((i) => (
-                <li key={i.id}>
-                  <Link to={`/interviews/${i.id}/report`}
-                    className="group -mx-3 grid grid-cols-[1fr_auto_24px] items-center gap-6 rounded-xl px-6 py-4 transition-colors hover:bg-white md:mx-0 md:grid-cols-[1fr_140px_100px_80px_24px] md:px-3">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-ink-900">{i.title}</p>
-                      <p className="mt-1 text-sm text-ink-500 md:hidden">{formatDate(i.created_at)} · {i.duration_minutes} min</p>
-                    </div>
-                    <span className="hidden text-sm text-ink-500 md:block">{formatDate(i.created_at)}</span>
-                    <span className="hidden text-sm text-ink-500 md:block">{i.duration_minutes} min</span>
-                    {i.overall_score != null
-                      ? <span className={cn('text-right font-serif text-2xl font-semibold tabular-nums', scoreTone(i.overall_score))}>{i.overall_score}</span>
-                      : <span className="text-right text-sm text-ink-400">Report</span>}
-                    <ArrowUpRight className="size-4 text-ink-400 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-ink-900" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+        {done.length > 0 && <HistoryList done={done} />}
       </section>
 
       {/* ------------------------------------------------ below the fold: habits, then why it works */}
