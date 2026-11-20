@@ -1,0 +1,32 @@
+# Keep the Docker build context small and free of secrets. The build context is the repo
+# root (the backend image also needs knowledge_base/), so everything else is excluded here.
+
+# Secrets: never baked into an image (the server passes them as environment variables)
+.env
+*.env
+*.env.local
+.env.*
+
+# Runtime data: uploads, exports and the Kokoro/FastEmbed models are mounted at run time
+data/
+backups/
+
+# Dependencies and build output: rebuilt inside the image
+**/node_modules/
+**/.venv/
+**/dist/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.ruff_cache/
+
+# Not needed to run the app
+.git/
+.github/
+.claude/
+.vscode/
+.idea/
+docs/
+reports/
+research_notes/
+**/tests/

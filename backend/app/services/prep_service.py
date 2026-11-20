@@ -88,23 +88,22 @@ Rules:
   engineering and science; product companies for software).
 - Mix the question types across the set: at least two realistic scenario or debugging
   questions ("X happens; what do you check / do?"), why/how and what-if questions, one
-  compare-and-choose question, and for technical subjects one small hands-on problem (a query
-  to write, an output to predict, a quick calculation). No bare definitions or acronym
+  compare-and-choose question, and for software subjects one small hands-on problem (a query
+  to write, an output to predict). No calculations or numerical problems, no bare definitions or acronym
   expansions, and no trick questions.
 - You know nothing about this candidate's projects: never write "in your project..." or
   assume work they did. Frame scenarios as situations ("You're asked to...", "A motor...").
 - Write questions the way an interviewer says them: one or two sentences, plain text. Never
   put code blocks or markdown in a question; describe any code in words.
-- For engineering, science and maths subjects, include analysis: why something is done, what
-  happens when a condition changes, and at least one short numerical problem whose answer
-  works the numbers out briefly in words.
+- For engineering, science and maths subjects, include analysis: why something is done and
+  what happens when a condition changes. NEVER a numerical problem or anything that needs a
+  calculation: ask for the reasoning behind it instead.
 - The model answer is something a strong candidate would SAY: start with a direct one-sentence
   answer, then explain briefly with one concrete example. 3-6 sentences, plain text, no markdown.
 - For behavioral topics, answer in STAR form (situation, task, action, result) with a
   realistic example a student could adapt.
 - Be accurate. If something depends on context, say so in one phrase. Every scenario must be
-  realistic and its premise technically true (don't invent a symptom that wouldn't happen),
-  and numerical problems must use the correct formula (e.g. three-phase quantities).
+  realistic and its premise technically true (don't invent a symptom that wouldn't happen).
 - Check every number and device before you write it: values must be consistent with each
   other and with typical practice (an induction motor's speed sits a few percent below
   120f/P; transformer impedance is a few percent), and each device must work the way the
@@ -145,19 +144,22 @@ Rules:
 # the problem?"), team-lead hypotheticals a fresher never faces, compound questions, answers
 # that invented facts as if they were the student's ("your recent 500 MW solar plant",
 # "reduced bugs by 30%"), and software examples (sprints, code review) for electrical students.
+# The wording is field-neutral on purpose (product decision: the site reads as a general mock
+# interview site), so it says "[your branch]" / "your field" instead of "electrical engineering":
+# the generated answers are shown to users verbatim.
 HR_LEVEL = {
     "easy": "the standard openers every panel asks: tell me about yourself, why this company, "
-            "why electrical engineering, relocation and site work, higher studies, five-year plan",
+            "why you chose your field, relocation, higher studies, five-year plan",
     "intermediate": "behavioural questions answered with a real story: tell me about a time you "
                     "worked in a team, handled a disagreement, missed a deadline, took the lead, "
                     "learned something fast; strengths and weaknesses with evidence",
     "hard": "pressure and tricky questions: why should we hire you over others, a failure and "
-            "what it taught you, low marks or a gap year, why core and not IT, a conflict with "
-            "a senior, the PSU bond, what if you are posted somewhere remote, salary expectations",
+            "what it taught you, low marks or a gap year, why this role and not another field, a "
+            "conflict with a senior, a service bond, a posting somewhere remote, salary expectations",
 }
 
-HR_PREP_PROMPT = """You prepare electrical-engineering graduates for the HR round of core-company
-and PSU interviews (campus placements, GET roles, PSU interviews after GATE).
+HR_PREP_PROMPT = """You prepare graduates for the HR round of job interviews (campus placements
+and graduate or trainee roles).
 
 Write {count} DISTINCT HR questions with model answers. Difficulty: {level}, which for HR means
 {hr_level}. Every question must be at this difficulty.
@@ -172,11 +174,11 @@ Questions:
   never a manager scenario a fresher would not face ("You are leading a team...").
 
 Model answers:
-- What a strong electrical graduate would actually SAY, in the first person, complete and
+- What a strong graduate would actually SAY, in the first person, complete and
   natural, 5-8 sentences. Behavioural answers follow STAR (situation, task, action, result) as a
   told story, without naming the letters.
-- Build the stories on what a fresher really has: the final-year project, an internship or plant
-  or substation training, a college team, technical club or fest, labs, a part-time job.
+- Build the stories on what a fresher really has: the final-year project, an internship or
+  industrial training, a college team, technical club or fest, labs, a part-time job.
 - The answer is a TEMPLATE the student makes their own, so it must not state facts you cannot
   know. Every name, number, percentage, result, company project, plant, place or award is a
   [placeholder] in square brackets. A story describes the kind of thing that happened ("I
@@ -191,10 +193,10 @@ Model answers:
 
 Example of the right shape (do not copy it):
 Q: Tell me about yourself.
-A: I'm [your name], a final-year electrical engineering student at [college]. I've always liked
-seeing how power actually reaches people, which is why my final-year project was on [your
-project], where I [what you did]. During my internship at [company or plant], I worked on
-[equipment or task] and learned [one concrete thing]. Outside class, I [activity that shows a
+A: I'm [your name], a final-year [your branch] student at [college]. I've always liked
+[what draws you to your field], which is why my final-year project was on [your project],
+where I [what you did]. During my internship at [company or plant], I worked on
+[a task you worked on] and learned [one concrete thing]. Outside class, I [activity that shows a
 strength]. I'm now looking for a role where I can work on [area] at a company like [company
 name], and grow into [your goal].
 
@@ -206,8 +208,8 @@ Do NOT repeat or rephrase any question in the ALREADY ASKED list."""
 # HR round personalised from the candidate's resume (Prep: "From your resume" > "HR &
 # behavioral"). Same rules as HR_PREP_PROMPT, but the answers use the resume's real facts, so a
 # student rehearses THEIR "tell me about yourself", not a template with blanks everywhere.
-HR_RESUME_PREP_PROMPT = """You prepare an electrical-engineering graduate for the HR round of core-company
-and PSU interviews, using THEIR resume, given below as numbered SOURCES (one fact per line).
+HR_RESUME_PREP_PROMPT = """You prepare a graduate for the HR round of job interviews, using
+THEIR resume, given below as numbered SOURCES (one fact per line).
 
 Write {count} DISTINCT HR questions with model answers. Difficulty: {level}, which for HR means
 {hr_level}. Every question must be at this difficulty.

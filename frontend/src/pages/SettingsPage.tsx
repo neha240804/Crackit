@@ -1,16 +1,14 @@
-// Settings: the user's own free Groq key (bring-your-own-key) and today's free allowance.
-//
-// Why users add a key: everyone without one shares the site's free AI allowance, which has
-// small daily limits. With their own free Groq key, interviews, prep and ATS checks run on
-// their own free quota, with no daily limit from us.
+// Settings: the user's own free Groq key. Bring-your-own-key only (product decision): there is
+// no shared key or free allowance, so interviews, prep and ATS checks all need it. The key
+// stays in this browser (features/account/groqKey.ts); the server never stores it.
 
-import { CheckCircle2, ExternalLink, KeyRound, ListChecks, Lock, Mic, ShieldCheck, Trash2 } from 'lucide-react'
+import { CheckCircle2, ExternalLink, KeyRound, Lock, ShieldCheck, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 
 import { PageHero } from '@/components/PageHero'
-import { Badge, Button, Card, ErrorAlert, Spinner } from '@/components/ui'
+import { Badge, Button, Card, ErrorAlert } from '@/components/ui'
 import { fieldClass } from '@/components/ui/styles'
-import { useGroqKey, useRemoveGroqKey, useSaveGroqKey, useUsage, type UsageAction } from '@/features/account/api'
+import { useGroqKey, useRemoveGroqKey, useSaveGroqKey } from '@/features/account/api'
 import { useAuth } from '@/features/auth/context'
 import { cn, formatDate } from '@/lib/utils'
 
@@ -19,23 +17,16 @@ const GROQ_KEYS_URL = 'https://console.groq.com/keys'
 const STEPS = [
   <>Open <a href={GROQ_KEYS_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-700 underline underline-offset-2">console.groq.com/keys</a> and sign in. It's free, and no card is needed.</>,
   <>Select <span className="font-medium text-ink-900">Create API Key</span>, give it any name (for example "Crackit"), and copy it.</>,
-  <>Paste it below and save. Crackit checks it with Groq before storing it.</>,
+  <>Paste it below and save. Crackit checks it with Groq, then keeps it in this browser only.</>,
 ]
 
 const PROTECTION = [
-  'Checked with Groq before it is saved, so a typo is caught right away.',
-  'Encrypted (AES-256-GCM) before it is stored, with a key only the server holds.',
+  'Never saved on our servers: not in the database, logs or traces.',
+  'Kept only in this browser, encrypted (AES-256-GCM) with a device key the page itself cannot read out.',
+  'Sent with your own requests over HTTPS and used only for them.',
   'Never shown again, not even to you: only its first and last four characters.',
-  'Never stored in this browser, and never written to logs.',
-  'Used only for your own interviews, prep and ATS checks. Remove it any time.',
+  'On another device or browser, add it again there. Remove it any time.',
 ]
-
-const USAGE_LABEL: Record<UsageAction, string> = {
-  interview: 'Mock interviews',
-  prep: 'Question-prep sets',
-  ats: 'ATS checks',
-  resume: 'Resume uploads',
-}
 
 function KeyCard() {
   const key = useGroqKey()
@@ -61,14 +52,14 @@ function KeyCard() {
           <div>
             <h2 className="text-xl font-semibold">Your free Groq key</h2>
             <p className="mt-1 max-w-xl text-sm leading-relaxed text-ink-500">
-              Crackit's AI runs on Groq. Add your own free key and everything runs on your own free quota, with no daily limit from us.
+              Crackit's AI runs on Groq, and it uses your own free key: mock interviews, question prep, resume uploads and ATS checks all need it.
             </p>
           </div>
         </div>
         {key.isLoading ? null : status?.saved ? (
           <Badge tone={status.readable ? 'success' : 'warning'}>{status.readable ? 'Key saved' : 'Add your key again'}</Badge>
         ) : (
-          <Badge>Using the shared allowance</Badge>
+          <Badge tone="warning">No key yet</Badge>
         )}
       </div>
 
@@ -84,9 +75,6 @@ function KeyCard() {
             <Trash2 className="size-4" aria-hidden /> Remove
           </Button>
         </div>
-      )}
-      {status?.saved && !status.readable && (
-        <p className="mt-3 text-sm text-warning-700">The saved key can no longer be read (the server's encryption key changed). Paste it again below.</p>
       )}
 
       <div className="mt-8 grid gap-8 lg:grid-cols-2">
@@ -110,7 +98,7 @@ function KeyCard() {
             </label>
             {save.error && <ErrorAlert message={save.error.message} />}
             {saved && !save.error && (
-              <p className="flex items-center gap-2 text-sm text-success-700"><CheckCircle2 className="size-4" aria-hidden /> Key checked and saved. You have no daily limit now.</p>
+              <p className="flex items-center gap-2 text-sm text-success-700"><CheckCircle2 className="size-4" aria-hidden /> Key checked and saved in this browser. You're all set.</p>
             )}
             <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" loading={save.isPending} disabled={!value.trim()}>
@@ -139,66 +127,20 @@ function KeyCard() {
   )
 }
 
-function AllowanceCard() {
-  const usage = useUsage()
-  const key = useGroqKey()
-  if (key.data?.saved && key.data.readable) {
-    return (
-      <Card className="p-6 sm:p-8">
-        <h2 className="text-xl font-semibold">Today's allowance</h2>
-        <p className="mt-2 text-sm text-ink-500">No daily limit: everything runs on your own Groq key.</p>
-      </Card>
-    )
-  }
-  return (
-    <Card className="p-6 sm:p-8">
-      <h2 className="text-xl font-semibold">Today's free allowance</h2>
-      <p className="mt-1 text-sm text-ink-500">Shared by everyone without their own key. Resets at midnight UTC.</p>
-      {usage.isLoading ? <Spinner /> : usage.error ? <div className="mt-4"><ErrorAlert message={usage.error.message} /></div> : (
-        <ul className="mt-6 grid gap-5 sm:grid-cols-2">
-          {(Object.keys(USAGE_LABEL) as UsageAction[]).map((action) => {
-            const { used, limit } = usage.data![action]
-            const left = Math.max(0, limit - used)
-            return (
-              <li key={action}>
-                <div className="flex items-baseline justify-between text-sm">
-                  <span className="text-ink-700">{USAGE_LABEL[action]}</span>
-                  <span className={cn('font-medium', left === 0 ? 'text-danger-700' : 'text-ink-900')}>{left} of {limit} left</span>
-                </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink-100">
-                  <div className={cn('h-full rounded-full', left === 0 ? 'bg-danger-600' : 'bg-brand-500')}
-                    style={{ width: `${Math.min(100, (used / limit) * 100)}%` }} />
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-    </Card>
-  )
-}
-
 export function SettingsPage() {
   const { user } = useAuth()
   const key = useGroqKey()
-  const usage = useUsage()
   const ownKey = Boolean(key.data?.saved && key.data.readable)
-  const left = (a: UsageAction) => (usage.data ? Math.max(0, usage.data[a].limit - usage.data[a].used) : '–')
   return (
     <div>
       <div className="mb-8">
         <PageHero compact eyebrow="Settings" title="Your account"
-          description={user ? `Signed in as ${user.name} (${user.email}). ${ownKey ? 'Your own key: no daily limits.' : 'The numbers show what is left of today’s free allowance.'}` : undefined}
+          description={user ? `Signed in as ${user.name} (${user.email}). ${ownKey ? 'Your Groq key is saved in this browser.' : 'Add your free Groq key to use the AI features.'}` : undefined}
           stats={[
             { label: 'Groq key', value: key.isLoading ? '–' : ownKey ? 'Saved' : 'None', icon: KeyRound, tone: ownKey ? 'bg-success-50 text-success-700' : 'bg-warning-50 text-warning-700' },
-            { label: 'Interviews', value: ownKey ? '∞' : left('interview'), icon: Mic, tone: 'bg-brand-50 text-brand-700', title: ownKey ? 'No daily limit with your own key' : 'Free mock interviews left today' },
-            { label: 'Prep sets', value: ownKey ? '∞' : left('prep'), icon: ListChecks, tone: 'bg-clay-50 text-clay-700', title: ownKey ? 'No daily limit with your own key' : 'Free prep sets left today' },
           ]} />
       </div>
-      <div className="grid gap-6">
-        <KeyCard />
-        <AllowanceCard />
-      </div>
+      <KeyCard />
     </div>
   )
 }

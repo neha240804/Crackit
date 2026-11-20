@@ -38,8 +38,7 @@ async def test_async_password_check_matches_sync():
 # ---------------------------------------------------------------- production settings
 def _prod(**overrides) -> Settings:
     values = {"app_env": "production", "secret_key": STRONG_KEY, "postgres_password": "s3cret-pw",
-              "groq_api_key": "gsk_test", "cors_origins": "https://crackit.example.com",
-              "key_encryption_key": "A" * 43 + "="}
+              "cors_origins": "https://crackit.example.com"}
     values.update(overrides)
     # _env_file=None: test only these values, never the developer's real .env
     return Settings(_env_file=None, **values)
@@ -54,13 +53,20 @@ def test_production_accepts_safe_settings():
     ({"secret_key": "change-me"}, "SECRET_KEY"),
     ({"secret_key": "short"}, "SECRET_KEY"),
     ({"postgres_password": "mockinterview"}, "POSTGRES_PASSWORD"),
-    ({"groq_api_key": ""}, "GROQ_API_KEY"),
     ({"cors_origins": "http://localhost:5174"}, "CORS_ORIGINS"),
     ({"cors_origins": "*"}, "CORS_ORIGINS"),
 ])
 def test_production_refuses_unsafe_settings(override, message):
     with pytest.raises(ValidationError, match=message):
         _prod(**override)
+
+
+def test_refusal_does_not_print_secrets():
+    # The error ends up in container logs; pydantic used to append the whole input dict.
+    with pytest.raises(ValidationError) as err:
+        _prod(cors_origins="*")
+    text = str(err.value)
+    assert STRONG_KEY not in text and "s3cret-pw" not in text and "gsk_test" not in text
 
 
 def test_development_keeps_working_with_defaults():
@@ -128,22 +134,36 @@ def test_tts_allows_registered_interviewer_lines():
 
 
 # ---------------------------------------------------------------- bring-your-own-key
-def test_secret_encryption_roundtrip_and_isolation():
+def test_groq_key_is_never_a_database_column():
+    """The user's own Groq key lives only in their browser; the server keeps no copy."""
+    from app.db.models import User
+
+    assert not [c for c in User.__table__.columns if "groq" in c.name or "key" in c.name]
+
+
+async def test_groq_key_comes_only_from_the_request_header():
+    """get_current_user takes the key from X-Groq-Key for this request; junk is ignored."""
     import uuid as _uuid
 
-    from app.core.crypto import DecryptionError, decrypt_secret, encrypt_secret
+    from app.api.deps import get_current_user
+    from app.core.groq_key import current_groq_key, has_user_key
+    from app.core.security import create_access_token
+    from app.db.models import User
 
-    alice, bob = _uuid.uuid4(), _uuid.uuid4()
-    secret = "gsk_" + "a1B2" * 12
-    token = encrypt_secret(secret, alice)
-    assert secret not in token and token.startswith("v1:")
-    assert decrypt_secret(token, alice) == secret
-    assert encrypt_secret(secret, alice) != token  # fresh nonce: same key, different ciphertext
-    with pytest.raises(DecryptionError):  # copied onto another user's row: refuses
-        decrypt_secret(token, bob)
-    tampered = token[:-4] + ("AAAA" if not token.endswith("AAAA") else "BBBB")
-    with pytest.raises(DecryptionError):  # any change to the ciphertext is detected
-        decrypt_secret(tampered, alice)
+    user = User(id=_uuid.uuid4(), email="a@example.com", name="A", password_hash="x")
+
+    class FakeDb:
+        async def get(self, _model, _id):
+            return user
+
+    token = create_access_token(user.id)
+    good = "gsk_" + "Ab3" * 10
+    await get_current_user(FakeDb(), token, good)
+    assert has_user_key() and current_groq_key() == good
+    await get_current_user(FakeDb(), token, "not-a-key")
+    assert not has_user_key()
+    await get_current_user(FakeDb(), token, None)
+    assert not has_user_key()
 
 
 def test_key_hint_hides_the_key():
@@ -157,7 +177,7 @@ async def test_user_key_reaches_tasks_and_threads_of_the_request():
     """LangGraph runs nodes in tasks/threads started from the request: the key must follow."""
     import asyncio
 
-    from app.core.groq_key import current_groq_key, set_user_key, using_own_key
+    from app.core.groq_key import current_groq_key, has_user_key, set_user_key
 
     async def read_later():
         await asyncio.sleep(0.01)  # let the other "request" run in between
@@ -167,7 +187,7 @@ async def test_user_key_reaches_tasks_and_threads_of_the_request():
         set_user_key(key)
         in_task = await asyncio.create_task(read_later())
         in_thread = await asyncio.to_thread(current_groq_key)
-        return in_task, in_thread, using_own_key()
+        return in_task, in_thread, has_user_key()
 
     a, b = await asyncio.gather(asyncio.create_task(request("gsk_userA")),
                                 asyncio.create_task(request("gsk_userB")))
@@ -191,23 +211,59 @@ def test_own_key_errors_point_to_settings():
     err = ai_http_error(wrapped, "Test")
     assert err.status_code == 400 and "Settings" in err.detail  # never 401: that logs out
     set_user_key(None)
-    err = ai_http_error(wrapped, "Test")
-    assert err.status_code == 502 and "Settings" not in err.detail
 
 
-async def test_own_key_skips_the_daily_budget():
-    from app.core.groq_key import set_user_key
-    from app.services.usage import ai_budget
+# ---------------------------------------------------------------- bring-your-own-key only
+def test_no_server_key_and_no_daily_allowance():
+    """BYOK only (product decision): no shared server key, no usage table, no allowance."""
+    import importlib.util
 
-    set_user_key("gsk_user")
-    async with ai_budget(None, None, "interview"):  # no DB touched at all with an own key
-        pass
+    from app.core.config import Settings
+    from app.db.base import Base
+
+    assert "groq_api_key" not in Settings.model_fields
+    assert "usage_counters" not in Base.metadata.tables
+    assert importlib.util.find_spec("app.services.usage") is None
+
+
+def test_ai_calls_without_a_key_ask_for_one():
+    """No key, no AI call: 428 with a pointer to Settings (never 401, which logs out)."""
+    from app.agents.common.errors import ai_http_error
+    from app.core.groq_key import GroqKeyMissing, current_groq_key, set_user_key
+
     set_user_key(None)
+    with pytest.raises(GroqKeyMissing) as info:
+        current_groq_key()
+    assert info.value.status_code == 428 and "Settings" in info.value.detail
+    wrapped = RuntimeError("graph failed")  # LangGraph wraps errors raised inside nodes
+    wrapped.__cause__ = info.value
+    assert ai_http_error(wrapped, "Test").status_code == 428
 
 
-def test_production_requires_key_encryption_key():
-    with pytest.raises(ValidationError, match="KEY_ENCRYPTION_KEY"):
-        _prod(key_encryption_key="")
+def test_every_ai_route_requires_a_key():
+    """Each route that starts AI work depends on require_groq_key, so it refuses up front."""
+    from fastapi.routing import APIRoute
+
+    from app.api.deps import require_groq_key
+    from app.api.v1 import interviews, optimizer, prep, resumes
+
+    def needs_key(route: APIRoute) -> bool:
+        stack = list(route.dependant.dependencies)
+        while stack:
+            dep = stack.pop()
+            if dep.call is require_groq_key:
+                return True
+            stack.extend(dep.dependencies)
+        return False
+
+    ai_routes = {"/interviews", "/interviews/{session_id}/answer",
+                 "/interviews/{session_id}/transcribe", "/prep/questions", "/optimizer/analyze",
+                 "/optimizer/optimize", "/resumes", "/resumes/{resume_id}/reparse"}
+    routes = [r for m in (interviews, optimizer, prep, resumes) for r in m.router.routes
+              if isinstance(r, APIRoute) and "POST" in r.methods and r.path in ai_routes]
+    assert {r.path for r in routes} == ai_routes  # all found (paths still match)
+    assert all(needs_key(r) for r in routes), [r.path for r in routes if not needs_key(r)]
+
 
 
 # ---------------------------------------------------------------- difficulty levels

@@ -1,18 +1,17 @@
 """Database tables for Crackit (SQLAlchemy 2.0 typed ORM).
 
-Only what the mock interview needs: users, their resumes (to personalise interviews),
-pasted job descriptions, interview sessions and per-question turns. LLM output (parsed
-profiles, reports, scores) is stored as JSONB.
+Users, their resumes (to personalise interviews), pasted job descriptions, interview sessions
+and per-question turns, and Question-prep data (starred questions, the current
+study set). LLM output (parsed profiles, reports, scores) is stored as JSONB.
 """
 
 import uuid
-from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampedBase
+from app.db.base import TimestampedBase
 
 
 def user_fk() -> Mapped[uuid.UUID]:
@@ -25,11 +24,9 @@ class User(TimestampedBase):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(120))
-    # Bring-your-own-key: the user's Groq API key, AES-256-GCM encrypted (core/crypto.py).
-    # Never returned by the API; the app shows only `groq_key_hint` ("gsk_…a1b2").
-    groq_key_encrypted: Mapped[str | None] = mapped_column(Text)
-    groq_key_hint: Mapped[str | None] = mapped_column(String(16))
-    groq_key_added_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # No Groq API key here, on purpose: a user's own key stays in their browser (encrypted
+    # there) and arrives with each request in the X-Groq-Key header, used for that request only
+    # (api/deps.py). A database leak or backup can never expose it.
 
 
 class Resume(TimestampedBase):
@@ -121,18 +118,31 @@ class InterviewTurn(TimestampedBase):
     session: Mapped[InterviewSession] = relationship(back_populates="turns")
 
 
-class UsageCounter(Base):
-    """How many AI-backed actions a user ran on one day (UTC), per action.
+class StarredQuestion(TimestampedBase):
+    """A Question-prep question the user starred to revise later.
 
-    Enforces the daily budget on the shared Groq key (services/usage.py). In the database,
-    not in memory, so a restart doesn't hand everyone a fresh allowance. One small row per
-    user, day and action; the composite primary key makes the increment a single upsert."""
+    A full copy (question, model answer, key points, tip) so it survives the study set being
+    replaced. Stored per account so stars follow the user to any device (they used to live in
+    one browser's localStorage). `key` = normalised question text: one star per question."""
 
-    __tablename__ = "usage_counters"
+    __tablename__ = "starred_questions"
+    __table_args__ = (UniqueConstraint("user_id", "key", name="uq_starred_user_key"),)
+
+    user_id: Mapped[uuid.UUID] = user_fk()
+    key: Mapped[str] = mapped_column(String(600))
+    question: Mapped[dict] = mapped_column(JSONB)  # PrepQuestion as JSON
+    topic: Mapped[str] = mapped_column(String(255))
+    experience: Mapped[str] = mapped_column(String(20))  # difficulty of the set it came from
+
+
+class PrepCurrentSet(TimestampedBase):
+    """The user's current Question-prep study set (questions, answers, Got it / Review marks),
+    one per user, so a set in progress is there on any device. JSONB: it is only ever read and
+    written whole, by the Prep page."""
+
+    __tablename__ = "prep_current_sets"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
     )
-    day: Mapped[date] = mapped_column(Date, primary_key=True)
-    action: Mapped[str] = mapped_column(String(30), primary_key=True)
-    count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    data: Mapped[dict] = mapped_column(JSONB)

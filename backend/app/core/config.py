@@ -26,6 +26,10 @@ class Settings(BaseSettings):
         env_file=ROOT_DIR / ".env",
         env_file_encoding="utf-8",
         extra="ignore",  # ignore .env keys this class doesn't declare
+        # A failed check (e.g. the production refusal below) must not print the settings:
+        # pydantic's error includes the input values by default, and a container log once
+        # showed the tail of a secret that way.
+        hide_input_in_errors=True,
     )
 
     # App
@@ -35,11 +39,6 @@ class Settings(BaseSettings):
     # Browser origins allowed to call the API, comma-separated in .env
     # (e.g. CORS_ORIGINS=https://crackit.example.com). Dev default: the Vite server.
     cors_origins: str = "http://localhost:5174"
-    # AES-256 key that encrypts users' own Groq keys at rest (32 bytes, base64). Generate:
-    # uv run python -c "from app.core.crypto import new_key_encryption_key as k; print(k())"
-    # Required in production; in development a key is derived from SECRET_KEY.
-    # Changing it makes saved keys unreadable (users are asked to add theirs again).
-    key_encryption_key: str = ""
     # LangSmith tracing in production (sends user data to LangSmith). Off unless set to true.
     trace_in_production: bool = False
 
@@ -62,7 +61,8 @@ class Settings(BaseSettings):
 
     # LLM (Groq free tier). "fast" = the live interviewer and the interview plan;
     # "strong" = resume parsing and the feedback report. Each falls back to the other.
-    groq_api_key: str = ""
+    # No server API key: every call uses the user's own key (core/groq_key.py). A leftover
+    # GROQ_API_KEY in .env is ignored (extra="ignore").
     llm_fast_model: str = "openai/gpt-oss-20b"
     llm_strong_model: str = "openai/gpt-oss-120b"
     stt_model: str = "whisper-large-v3-turbo"
@@ -99,10 +99,6 @@ class Settings(BaseSettings):
             problems.append("SECRET_KEY must be a random string of at least 32 characters")
         if self.postgres_password == "mockinterview":
             problems.append("POSTGRES_PASSWORD is still the development default")
-        if not self.key_encryption_key:
-            problems.append("KEY_ENCRYPTION_KEY is missing (it encrypts users' Groq keys)")
-        if not self.groq_api_key:
-            problems.append("GROQ_API_KEY is missing")
         if any(o.startswith("http://localhost") or o == "*" for o in self.cors_origin_list):
             problems.append("CORS_ORIGINS must list the real site origin(s), not localhost or *")
         if problems:

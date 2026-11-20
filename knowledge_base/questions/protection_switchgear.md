@@ -47,7 +47,7 @@ Intermediate: How does an MCB work, and how is it different from a fuse? (Report
 Intermediate: What is the difference between an ELCB and an RCD or RCCB? (Reported: Schneider)
 Easy: What is the difference between single-pole and double-pole breakers? (Reported: Bajaj Electricals)
 Intermediate: (follow-up) Which device protects against earth leakage and which against overcurrent? What sensitivity is used for protecting people?
-Intermediate: (numerical) What MCB rating would you choose for a 2 kW, 230 V load? Explain the margin.
+Intermediate: How would you choose the MCB rating for a small single-phase load, and why leave a margin above the load current?
 Good answers cover: MCB thermal (bimetal) trip for overload and magnetic trip for short circuit, fixed settings, up to about 125 A; MCCB larger currents with adjustable trips and higher breaking capacity; fuse melts once, MCB resets; RCCB trips on the difference between phase and neutral current (30 mA for people, 100-300 mA for fire); older ELCBs were voltage-operated; 2000/230 is about 8.7 A, so a 10 A MCB (16 A if cable allows) with curve chosen for inrush.
 
 ## Lightning and surge protection

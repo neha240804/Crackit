@@ -19,6 +19,8 @@ dist/
 # Runtime data (uploads, generated files)
 data/
 backend/data/
+# production database dumps (docker-compose.prod.yml)
+backups/
 
 # Editors / OS
 .vscode/*

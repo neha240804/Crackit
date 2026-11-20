@@ -24,7 +24,7 @@ Easy: What are the losses in a transformer and what does each depend on? (Report
 Intermediate: (follow-up) Then why are motors rated in kW?
 Intermediate: What do the open-circuit and short-circuit tests tell you, and on which side is each done?
 Hard: At what load is a transformer's efficiency maximum, and why do distribution transformers aim for it at lower load than power transformers?
-Hard: (numerical) A 500 kVA transformer has 10% impedance. What is its fault level, and roughly what fault current flows on the 415 V side?
+Hard: What decides a transformer's fault level, and why does a lower-impedance transformer need breakers with a higher breaking capacity?
 Good answers cover: copper loss depends on current, iron loss on voltage, neither on load power factor, so kVA; motor output is mechanical, so kW; OC test on LV side gives core loss, SC test on HV side gives copper loss and impedance; maximum efficiency when copper loss equals iron loss; fault MVA = rating / Z = 5 MVA, I = 5000 / (1.732 x 0.415) about 7 kA.
 
 ## Transformer operation: energising, connections and parallel running
@@ -42,7 +42,7 @@ Easy: What types of motors do you know, and which is the most widely used in ind
 Easy: Why can an induction motor never run at synchronous speed?
 Intermediate: How is an induction motor like a transformer, and where does the analogy break down?
 Easy: What are the losses in an induction motor? (Reported: L&T Power)
-Easy: (numerical) A 4-pole, 50 Hz motor runs at 1440 rpm. Find the synchronous speed and the slip.
+Easy: Why does an induction motor always run slightly below synchronous speed, and what does the slip tell you about its load?
 Good answers cover: rotating magnetic field from three-phase supply, induced rotor current, torque; at synchronous speed there is no relative motion, no induced current, no torque, so slip is needed; Ns = 120f/P = 1500 rpm, slip = 4%; rotor as a short-circuited rotating secondary; stator and rotor copper loss, core loss, friction and windage; squirrel cage is rugged, cheap, low maintenance.
 
 ## Induction motor starting and speed control
@@ -51,7 +51,7 @@ Intermediate: (follow-up) What is its disadvantage, and why not start a large mo
 Easy: Why is the starting current of an induction motor so high?
 Intermediate: How can the speed of an induction motor be controlled? When would you use a VFD instead of a starter?
 Hard: How can harmonics produced in an induction-motor drive be reduced? (Reported: ABB)
-Intermediate: (numerical) Two motors of the same power run at 415 V and 3.3 kV. Which draws less current, and by roughly how much? (Reported as a concept question: Siemens Energy)
+Intermediate: Two motors of the same power run at 415 V and 3.3 kV. Which draws less current, and why are large motors built for higher voltages? (Reported as a concept question: Siemens Energy)
 Good answers cover: at standstill slip is 1, rotor acts like a shorted secondary, so starting current is 5-7x rated; star-delta applies 1/root 3 phase voltage, so starting current and torque fall to one third; low starting torque is the drawback; DOL causes voltage dips on the network; speed control by V/f (VFD), pole changing, rotor resistance for slip-ring motors; I = P / (1.732 x V x pf x efficiency), so higher voltage means proportionally less current.
 
 ## Single-phase induction motors

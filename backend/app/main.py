@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.interview import runtime as interview_runtime
-from app.api.v1 import account, auth, health, interviews, optimizer, prep, resumes, usage
+from app.api.v1 import account, auth, health, interviews, optimizer, prep, resumes
 from app.core.config import settings
 from app.rag.embeddings import get_embeddings
 from app.rag.knowledge_base import ingest_knowledge_base
@@ -51,10 +51,10 @@ app.add_middleware(
     allow_origins=settings.cors_origin_list,
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-Groq-Key"],  # X-Groq-Key: user's own key (BYOK)
 )
 
 # Every v1 route lives under /api/v1 so a future v2 can sit beside it.
 for router in (health.router, auth.router, resumes.router, optimizer.router, prep.router,
-               interviews.router, usage.router, account.router):
+               interviews.router, account.router):
     app.include_router(router, prefix="/api/v1")

@@ -13,10 +13,10 @@ as openers, then move to practical use.
 
 ## Circuit basics and theorems
 Easy: Where does Ohm's law stop holding, and where do you use it in practice? (Reported: Tata Power, Schneider)
-Intermediate: Use Kirchhoff's laws to work out how current divides in a small distribution network. (Reported: Tata Power)
+Intermediate: How do Kirchhoff's laws explain the way current divides in a small distribution network? (Reported: Tata Power)
 Easy: Explain Thevenin's theorem in one sentence, and where it is useful. (Reported: Bajaj Electricals)
 Intermediate: How do you convert a star network to a delta network, and when do you need to? (Reported: Schneider)
-Easy: (numerical) Three 30-ohm resistors are connected in star. What is the equivalent delta?
+Easy: Why would you convert a star network of resistors to delta, and when does it make a circuit easier to analyse?
 Good answers cover: Ohm's law fails for non-linear devices (diodes, arcs) and when temperature changes resistance; KCL is conservation of charge at a node, KVL of energy around a loop; Thevenin replaces a linear network with one source and one series impedance (used for fault and load calculations); star to delta: R_delta = 3 x R_star for equal resistors, so 90 ohm each.
 
 ## AC fundamentals and three-phase systems
@@ -31,7 +31,7 @@ Good answers cover: P in W, Q in VAR, S in VA, pf = cos phi; current lags voltag
 Intermediate: A switch connects a DC source to an RC circuit at t = 0. Sketch the capacitor voltage and current. (Reported: Texas Instruments)
 Easy: (follow-up) What is the capacitor voltage after one time constant, and after five?
 Intermediate: What is resonance in an RLC circuit? Where is it useful and where is it dangerous?
-Easy: (numerical) Find the time constant for R = 10 kilo-ohm and C = 100 microfarad.
+Easy: What does the time constant of an RC circuit tell you, and how does changing R or C change it?
 Good answers cover: Vc rises exponentially as V(1 - e^(-t/RC)), current jumps to V/R then decays; about 63% at one tau and essentially full after five; at resonance XL = XC and f = 1 / (2 pi root(LC)), useful in filters and tuning, dangerous when capacitor banks resonate with system inductance at harmonic frequencies; tau = RC = 1 s.
 
 ## Control systems

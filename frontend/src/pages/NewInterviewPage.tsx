@@ -237,7 +237,7 @@ export function NewInterviewPage() {
 
           <Field step={step++} label={type === 'topic' ? 'Topic' : type === 'hr' ? 'Target role (optional)' : 'Focus topic (optional)'}>
               <input value={topic} onChange={(e) => setTopic(e.target.value)} maxLength={120} aria-label="Topic"
-                placeholder={type === 'hr' ? 'e.g. Graduate Engineer Trainee (Electrical)' : type === 'topic' ? 'e.g. Transformers' : 'e.g. Substation protection, or leave empty'}
+                placeholder={type === 'hr' ? 'e.g. Graduate Engineer Trainee' : type === 'topic' ? 'e.g. Transformers' : 'e.g. Substation protection, or leave empty'}
                 className={cn(fieldClass, 'py-2 text-[13px]')} />
               {type === 'topic' && (
                 <div className="mt-3 flex flex-wrap gap-2">

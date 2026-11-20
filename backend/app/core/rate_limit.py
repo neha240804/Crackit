@@ -8,9 +8,9 @@ a deque; a call is allowed when fewer than `times` happened in the last `seconds
 
 Kept in memory on purpose: Crackit runs as ONE process (the voice cache and interview
 streams already assume that), so a dict is exact and costs nothing. Losing the counts on a
-restart is harmless for windows of seconds to an hour. Long-term quotas (per day) live in
-the database instead: see services/usage.py. If the API ever runs as several processes,
-move this to Redis or Postgres, or each process would allow the full limit.
+restart is harmless for windows of seconds to an hour. (There are no daily quotas: every AI
+call runs on the user's own Groq key, and Groq enforces its quota.) If the API ever runs as
+several processes, move this to Redis or Postgres, or each process would allow the full limit.
 
 Behind a reverse proxy, run uvicorn with --proxy-headers --forwarded-allow-ips=<proxy ip>
 so request.client.host is the visitor's IP and not the proxy's (else everyone shares one

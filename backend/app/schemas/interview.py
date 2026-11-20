@@ -63,7 +63,9 @@ class InterviewerTurn(BaseModel):
     reaction: str = Field(
         description="1-2 short spoken sentences reacting specifically to what the candidate said"
     )
-    next_move: Literal["dig_deeper", "clarify", "correct_and_probe", "new_topic"]
+    # "hint" replaced "correct_and_probe": the interviewer no longer corrects by giving the
+    # answer; it hints and lets the candidate retry the same question once.
+    next_move: Literal["dig_deeper", "clarify", "hint", "new_topic"]
     question: str = Field(description="Exactly ONE spoken question, max 35 words")
     focus_area: str = Field(description="Focus area this question belongs to (reuse the exact "
                                         "label when staying on the same thread)")
@@ -78,7 +80,8 @@ class InterviewerTurnWithSwitch(InterviewerTurn):
     replies that left them out (HTTP 400 json_validate_failed), which broke a live interview.
     """
 
-    switch_reaction: str = Field(description="Correct idea in one short sentence + transition")
+    switch_reaction: str = Field(description="Warm encouragement WITHOUT giving the answer, "
+                                             "then a transition to the next topic")
     switch_question: str = Field(description="ONE clear, concrete question about the next "
                                              "topic, at the candidate's level (not a definition)")
 

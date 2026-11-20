@@ -18,6 +18,13 @@ bank's six electrical tracks come from `reports/Electrical fresher interview que
 (questions candidates reported at NTPC, POWERGRID, BHEL, Tata Power, L&T, Siemens, Schneider,
 ABB, Adani and others, tagged "Reported: company"); they are listed first on the Prep page.
 
+**But the site reads as a general mock-interview site** (product decision, Nov 2026): no
+user-visible text names electrical engineering, core companies or PSUs (landing, auth,
+dashboard, prep headings "Popular tracks" / "More tracks", meta description, HR prep prompts,
+whose answers users see verbatim, use "[your branch]" / "your field"). Electrical topics stay
+only as suggestions: track names, one-tap topics, placeholders. The landing sample is a
+resume-based exchange so it fits any field.
+
 ## Main goal
 
 A realistic, **real-time voice mock interview** that feels like talking to an experienced
@@ -32,7 +39,10 @@ interviewer, not a chatbot reading predefined questions:
   Interviewers: Maya, Arjun, Sara (own names, illustrated faceless portraits, no real people).
 - Time-boxed, resumable after a refresh, and ends with a **scored feedback report**
   (per question + communication metrics).
-- **Free to run**: Groq free tier for LLM + Whisper; voice generated locally with Kokoro.
+- **Free to run**: Groq free tier for LLM + Whisper, on **each user's own key** (bring-your-own-key
+  only: no server key, no free allowance); voice generated locally with Kokoro.
+- **No numerical questions anywhere**: nothing that needs a calculation (bank, interviewer,
+  switch, prep). Ask for the reasoning behind it instead.
 - Built as a learning project: keep code readable and explain *why* in comments.
 
 ## Tech stack
@@ -71,12 +81,15 @@ End ─────────────── POST /{id}/end ─────
 Report page ─────── POST /{id}/report ─────────────► build_report (strong LLM + code metrics), cached
 ```
 
-### Database (7 tables)
+### Database (8 tables)
 
 `users`, `resumes` (parsed profile JSONB, `purpose` interview|ats, one primary per purpose), `job_descriptions`, `resume_versions`
 (optimized rewrite + analysis JSONB + DOCX path), `interview_sessions`
 (config JSONB incl. `started_at`, `thread_id`, `report` JSONB), `interview_turns`,
-`usage_counters` (AI actions per user per UTC day, for the daily budget).
+`starred_questions` (Prep stars, full question copy, unique per user + normalised text) and
+`prep_current_sets` (the Prep page's current study set incl. marks, JSONB, one per user).
+No table stores a Groq API key (a test enforces it). `usage_counters` (the old daily
+allowance) was dropped in migration `b7c1d2e3f4a5`.
 LangGraph creates its own `checkpoint*` tables (Alembic ignores them).
 
 ### ATS optimizer graph (`backend/app/agents/optimizer/graph.py`)
@@ -107,10 +120,17 @@ build_report(): separate function, called after the interview
 - State lives in Postgres (`thread_id` = session id): refreshes and server restarts lose nothing.
 - **Interviewer turn** = structured output `InterviewerTurn`: `assessment` (correct /
   partially_correct / incorrect / unclear / not_applicable), `reaction`, `next_move`
-  (dig_deeper / clarify / correct_and_probe / new_topic), `question`, `focus_area`.
+  (dig_deeper / clarify / hint / new_topic), `question`, `focus_area`.
+- **Coaching, not answering:** the interviewer is encouraging and **never gives the answer**.
+  1st weak answer → `hint` (a nudge in the reaction + the same question again, guided);
+  2nd → moves on without revealing it (the report has model answers). After a non-answer
+  ("I don't know", "tell me the answer") code replaces the model's switch line with a fixed
+  honest one (`non_answer_reaction()`): the model kept saying "Great effort!" to "I don't know".
+  Tests forbid "give the correct idea"-style wording in the interviewer prompts.
 - **Topic control is enforced in code**, not left to the prompt:
   - `thread_info()` defines a thread by moves (since the last `new_topic`), not by label.
-  - Struggling streak: 2 answers in a row incorrect/unclear/partial (`MAX_MISSES = 2`) → switch.
+  - Struggling streak: 2 answers in a row incorrect/unclear/partial (`MAX_MISSES = 2`) → switch
+    (= one hint, one retry).
   - Good answers may go up to `MAX_FOLLOW_UPS = 3` follow-ups before switching.
   - **Code picks the next topic** (`next_focus_area()` from the plan) and uses `SWITCH_PROMPT`.
   - When already 1 miss in, the same call uses `InterviewerTurnWithSwitch` to draft the
@@ -143,14 +163,14 @@ build_report(): separate function, called after the interview
 | File | Responsibility |
 |---|---|
 | `frontend/src/App.tsx` | Routes: `/` landing, `/login`, `/register`; logged in: `/dashboard`, `/resume`, `/interviews/new`, `/interviews/:id/report` (light, `AppShell` top bar); `/interviews/:id` room (dark, full screen) |
-| `frontend/src/features/product.ts` | **The three tools** (Mock interviews / Question prep / ATS check): one name, icon, colour, tagline and CTA each, shared by the landing page, app nav, dashboard and auth page; also `ELECTRICAL_SUBJECTS` (the six electrical subjects shown on the landing page). Change product wording here |
-| `frontend/src/pages/LandingPage.tsx` | Public page, aimed at electrical students: hero naming all three tools (+ jump links) with an electrical sample exchange (star-delta starting), "made for electrical engineers" subjects section, "three tools" section, how a mock interview works, interview features, report sample, interviewers, closing CTA |
+| `frontend/src/features/product.ts` | **The three tools** (Mock interviews / Question prep / ATS check): one name, icon, colour, tagline and CTA each, shared by the landing page, app nav, dashboard and auth page. Change product wording here |
+| `frontend/src/pages/LandingPage.tsx` | Public page, worded as a general mock-interview site: hero naming all three tools (+ jump links) with a resume-based sample exchange, "three tools" section, how a mock interview works, interview features, report sample, interviewers, closing CTA |
 | `frontend/src/pages/DashboardPage.tsx` | Action first: unfinished interviews → the three tools (interview card holds the 4 formats, `/interviews/new?type=…`) → progress + history → habits and facts below the fold. No duplicate New-interview button (it's in the top bar) |
 | `frontend/src/pages/NewInterviewPage.tsx` | Device checks (fixed column) + interview settings (only this card scrolls on lg); reads `?type=` and `?topic=`; resume/JD formats pick or upload an interview resume (`features/resume/InterviewResumePicker.tsx`) and send `resume_id` |
 | `frontend/src/pages/InterviewRoomPage.tsx` | Full-screen "stage": interviewer centre, captions, small self-view, transcript drawer, bottom dock. Voice only (no typed answers). Phase machine `ready → speaking → listening → processing → …` |
 | `frontend/src/pages/InterviewReportPage.tsx` | Feedback report |
 | `frontend/src/pages/ResumePage.tsx` (`/resume`, nav "ATS check") | Check only: upload/select an ATS resume + optional JD → `POST /optimizer/analyze` → report (`features/ats/AtsReport.tsx`: score, action plan, missing keywords, gaps, format checks). The backend rewrite/DOCX endpoints still exist but have no UI |
-| `frontend/src/pages/PrepPage.tsx` (`/prep`, nav "Question prep") | Dark hero band (`PrepHero`: title, the three steps as chips, live stats starred / got it / to review; the starred tile opens the list), mode tabs that light up in their own colour (By topic sage, From your resume clay, Starred honey), colour-filled selected track tiles, difficulty cards with signal bars (`LevelBars`; sage / honey / clay), summary chips beside the action, a track-coloured banner with a progress strip over the set, a solid sage "practise out loud" card. Mode switch ("By topic" / "From your resume"), numbered setup (colour-coded track tiles with icons → topic → level with a one-line meaning), live summary of what you will get, one action → study set (difficulty-coloured cards, progress ring); answers hidden until revealed, Got it / Review again marks, progress, "More questions", link to a mock interview. Every question in a set is at the chosen difficulty (enforced in `prep_service.generate`). Only the current set is kept in localStorage (no "recent sets"); a star on each question saves it to the **Starred questions** tab (`mockinterview_starred_v1`, full copy of question + answer, topic filter) for revision (`features/prep/api.ts`) |
+| `frontend/src/pages/PrepPage.tsx` (`/prep`, nav "Question prep") | Dark hero band (`PrepHero`: title, the three steps as chips, live stats starred / got it / to review; the starred tile opens the list), mode tabs that light up in their own colour (By topic sage, From your resume clay, Starred honey), colour-filled selected track tiles, difficulty cards with signal bars (`LevelBars`; sage / honey / clay), summary chips beside the action, a track-coloured banner with a progress strip over the set, a solid sage "practise out loud" card. Mode switch ("By topic" / "From your resume"), numbered setup (colour-coded track tiles with icons → topic → level with a one-line meaning), live summary of what you will get, one action → study set (difficulty-coloured cards, progress ring); answers hidden until revealed, Got it / Review again marks, progress, "More questions", link to a mock interview. Every question in a set is at the chosen difficulty (enforced in `prep_service.generate`). Only the current set is kept (no "recent sets"), saved to the account (`/prep/current`, debounced); a star on each question saves it to the **Starred questions** tab (`/prep/starred`, full copy of question + answer, topic filter, optimistic toggle) for revision (`features/prep/api.ts`). Old localStorage data (`mockinterview_prep_v1`, `mockinterview_starred_v1`) moves to the first account that opens Prep in that browser, once |
 | `frontend/src/features/interview/media.ts` | Camera/mic, `AnswerRecorder` (VAD), `LiveCaptions`, `speak()` (server voice + adaptive buffering, browser fallback) |
 | `frontend/src/features/interview/api.ts` | API calls; converts `remaining_seconds` to `deadline_ms` outside render |
 | `frontend/src/components/AppShell.tsx`, `Brand.tsx` | Top bar layout, logo, score card; `Avatar` = original faceless SVG portraits per interviewer (maya / arjun / sara) |
@@ -192,9 +212,37 @@ Ports differ from CareerPilot AI (8000 / 5173 / 5433 / 6333) so both can run at 
    (Vite proxies `/api` to :8001).
 5. `.claude/launch.json` has `mi-backend` and `mi-frontend` configs with the same commands.
 
-Required: `.env` at repo root (copy `.env.example`) with `GROQ_API_KEY` (and `LANGSMITH_*`).
+Required: `.env` at repo root (copy `.env.example`), with `LANGSMITH_*` if you want tracing.
+There is no server Groq key: add your own in the app's Settings. Scripted HTTP checks send
+it as the `X-Groq-Key` header (a `GROQ_API_KEY` left in `.env` is ignored by the app; it is
+single-quoted there, so strip quotes when a script reads it).
 Kokoro files in `data/models/kokoro/` (`kokoro-v1.0.onnx`, `voices-v1.0.bin`, git-ignored), from
 https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1 (full fp32 model).
+
+## Running in production
+
+Step-by-step guide: **`docs/DEPLOYMENT.md`** (target: one Oracle Cloud Always Free Ampere A1
+VM, ARM64; all images build on amd64 and arm64). `docker compose -f docker-compose.prod.yml up -d --build`:
+
+| Service | What |
+|---|---|
+| `web` | `frontend/Dockerfile`: builds the React app, served by **Caddy** (`deploy/Caddyfile`): automatic HTTPS for `SITE_ADDRESS`, `/api/*` → backend, SPA fallback, CSP + security headers, 12 MB body limit, hashed assets cached a year |
+| `backend` | `backend/Dockerfile` (python slim + uv, non-root uid 10001, code at `/srv/backend` so `ROOT_DIR` = `/srv`, `knowledge_base/` baked in, `./data` mounted). `docker-entrypoint.sh` runs `alembic upgrade head`, then ONE uvicorn process with `--proxy-headers` |
+| `postgres`, `qdrant` | no published ports; Qdrant pinned to the dev version |
+| `backup` | `deploy/backup.sh`: `pg_dump -Fc` into `./backups` at start and every 24 h, newest 7 kept (restore steps in the guide) |
+
+CI: `.github/workflows/ci.yml` (backend pytest + ruff, frontend build + lint, both images + `caddy validate`).
+
+Production gotchas:
+- **Client IP behind the proxy:** per-IP limits read `request.client.host`; without
+  `--proxy-headers` every visitor shares Caddy's IP (one shared login limit). `--forwarded-allow-ips="*"`
+  is safe only because port 8001 is never published; Caddy overwrites a forged `X-Forwarded-For` (tested).
+- **Logs must not hold the user's Groq key:** Caddy's error log includes request headers and hides only
+  `Authorization`/`Cookie` by itself; the Caddyfile's global `log` filter deletes `X-Groq-Key` (tested with a 502).
+- **Settings errors hide their input** (`hide_input_in_errors`): a production refusal once printed the
+  tail of a secret into the container log. Test: `test_refusal_does_not_print_secrets`.
+- Production mode refuses `localhost` CORS origins, so a local test of the prod stack uses
+  `http://127.0.0.1:8088` (see the guide). HTTPS is required in production for the microphone and WebCrypto.
 
 ## Testing
 
@@ -259,8 +307,15 @@ https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1 (full 
   waited out the per-minute window: 75 s). Medium reasoning was tried and dropped (no accuracy
   gain, hit the token limit).
 - **Question bank lines are tagged `Easy:` / `Intermediate:` / `Hard:`** (by question
-  difficulty, not experience); follow-ups and numericals carry `(follow-up)` / `(numerical)`
-  inside the text. A test rejects the old Fresher/Mid/Senior tags.
+  difficulty, not experience); follow-ups carry `(follow-up)` inside the text. A test rejects
+  the old Fresher/Mid/Senior tags.
+- **No numericals (product decision, Nov 2026):** in a voice interview nobody can do the
+  working, and the fast model got its own arithmetic wrong. The bank's `(numerical)` lines
+  were rewritten as the reasoning behind them ("what decides a transformer's fault level?");
+  `REAL_QUESTION_STYLE` (in every question-writing prompt) says NEVER, and so do the switch
+  prompt, the level guide and the prep prompt. Test: `test_no_numerical_questions_anywhere`.
+  Scenario questions may still mention values ("a 75 kW motor...") as long as nothing
+  has to be computed.
 - **Interviewer follows the candidate:** after the intro it picks the planned area that fits
   what they said (it once forced "DC motors" onto a substation internship), and when an answer
   goes somewhere relevant it follows that thread instead of re-asking.
@@ -290,20 +345,29 @@ https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1 (full 
   Passwords are capped at 72 bytes (bcrypt 5 raises above that: it was a 500).
 - **Limits (abuse protection):** per-minute limits per user/IP live in memory
   (`core/rate_limit.py`, `per_user()` / `per_ip()` route dependencies; single process only).
-  Daily AI budget per user is in Postgres (`services/usage.py`, `ai_budget()` wraps the route
-  call; charged only on success; an interview counts once, never its answers). `/tts` only
+  No daily quotas: every AI call runs on the user's own key, and Groq enforces its quota. `/tts` only
   voices chunks registered by `presynthesize()` (403 otherwise). LangSmith tracing is forced
   off when `APP_ENV=production` unless `TRACE_IN_PRODUCTION=true`.
-- **Bring-your-own-key (BYOK):** users can save their own free Groq key in `/settings`
-  (`api/v1/account.py`). It's checked with Groq, AES-256-GCM encrypted with the user id as
-  associated data (`core/crypto.py`, `KEY_ENCRYPTION_KEY`), and never returned (only a hint).
-  `get_current_user` decrypts it into a per-request ContextVar (`core/groq_key.py`); LLM and
-  Whisper clients are built per call with `current_groq_key()`. Never put the key in graph
-  state (it's checkpointed to Postgres). With an own key the daily budget is skipped. Own-key
+- **Bring-your-own-key ONLY (product decision, Nov 2026): no server key, no free allowance.**
+  Every AI route uses `KeyedUser` (`require_groq_key` in `api/deps.py`) and answers **428**
+  "Add your free Groq API key in Settings" without one; `current_groq_key()` raises the same
+  if anything slips past, and `ai_http_error()` passes it through. Not on AI routes: viewing
+  a cached report, lists, TTS (local). Frontend: the Dashboard shows an "Add your free Groq
+  key" card first when none is saved, and `ErrorAlert` adds an "Open Settings" link to any
+  message ending "in Settings". Test: `test_every_ai_route_requires_a_key`.
+- **The server never stores the key** (it used to be encrypted in Postgres, dropped in
+  migration `300a976995e5`). `/settings` checks it with
+  Groq (`POST /account/groq-key/check`, nothing saved), then the browser keeps it AES-GCM
+  encrypted with a non-extractable WebCrypto device key in IndexedDB, ciphertext in
+  localStorage per user id (`features/account/groqKey.ts`). `lib/api.ts` sends it as
+  `X-Groq-Key`; `get_current_user` puts a well-formed one into a per-request ContextVar
+  (`core/groq_key.py`); LLM and Whisper clients are built per call with `current_groq_key()`.
+  Logout drops the decrypted copy from memory. Never log it, and never put it in graph
+  state (it's checkpointed to Postgres). Key
   failures map to 400 + "update it in Settings" (`agents/common/errors.py`), never 401 (the
   frontend logs out on 401).
 - **`APP_ENV=production`** makes startup fail on development defaults (SECRET_KEY, DB
-  password, localhost/`*` CORS, missing Groq key) and hides `/docs`. CORS origins come from
+  password, localhost/`*` CORS) and hides `/docs`. CORS origins come from
   `CORS_ORIGINS` in `.env`. Tests: `tests/test_hardening.py`.
 - **Editing code with scripts:** shell/Python string escaping has turned `\n` into real newlines
   (and broke on `\U` in Windows paths) several times. Prefer direct file edits for code

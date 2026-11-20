@@ -1,8 +1,9 @@
 // Small reusable UI building blocks. Every page uses these, so the app looks consistent
 // and a style change happens in one place.
 
-import { Loader2 } from 'lucide-react'
+import { ArrowRight, Loader2 } from 'lucide-react'
 import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
+import { Link } from 'react-router'
 
 import { buttonClass, fieldClass, type ButtonVariant } from '@/components/ui/styles'
 import { cn } from '@/lib/utils'
@@ -63,9 +64,17 @@ export function Badge({ tone = 'neutral', children }: { tone?: BadgeTone; childr
 
 // ------------------------------------------------------------------ Feedback
 export function ErrorAlert({ message }: { message: string }) {
+  // Every AI feature needs the user's own Groq key (bring-your-own-key only). The server's
+  // messages for a missing (428) or rejected key end with "in Settings": link straight there.
+  const toSettings = /\bin Settings\b/.test(message)
   return (
     <div role="alert" className="rounded-xl border border-danger-50 bg-danger-50 px-3.5 py-2.5 text-sm text-danger-700">
       {message}
+      {toSettings && (
+        <Link to="/settings" className="ml-2 inline-flex items-center gap-1 font-medium underline underline-offset-2">
+          Open Settings <ArrowRight className="size-3.5" aria-hidden />
+        </Link>
+      )}
     </div>
   )
 }

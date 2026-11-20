@@ -1,8 +1,8 @@
 // Question prep: curated tracks (from the question bank) and generated study sets.
-// Sets are kept in localStorage, not on the server: reopening a set costs no AI call, and
-// "Got it / Review again" marks are personal study state that only this browser needs.
+// The current set and starred questions are saved to the account (see below): reopening a set
+// costs no AI call, and they follow the student to any device.
 
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 import type { ExperienceLevel, PrepQuestion, PrepSetOut, PrepTrack } from '@/lib/types'
@@ -46,10 +46,12 @@ export interface SavedSet {
   createdAt: number
 }
 
-const KEY = 'mockinterview_prep_v1'
-// Only the current set is kept (so a refresh doesn't lose it). There used to be a "Recent
-// sets" row with up to 8; questions worth keeping are now starred instead (see below).
-const MAX_SETS = 1
+// Both the current set and the starred questions are saved to the ACCOUNT (Postgres, via
+// /prep/current and /prep/starred), so they follow the student to any device and survive
+// clearing the browser. They used to live in localStorage; what an older version left there is
+// moved to the account once (migrateLocal below) and then removed.
+const OLD_SET_KEY = 'mockinterview_prep_v1'
+const OLD_STAR_KEY = 'mockinterview_starred_v1'
 
 // Sets saved before levels became difficulties hold 'fresher' / '1-3' ... and questions tagged
 // 'medium'. Map them once on load (same mapping as the backend), so the UI only sees new values.
@@ -63,41 +65,123 @@ function upgrade(set: SavedSet): SavedSet {
   }
 }
 
-export function loadSets(): SavedSet[] {
+function readLocal<T>(key: string): T[] {
   try {
-    return (JSON.parse(localStorage.getItem(KEY) ?? '[]') as SavedSet[]).map(upgrade)
+    return JSON.parse(localStorage.getItem(key) ?? '[]') as T[]
   } catch {
-    return [] // corrupted or from an older version: start fresh rather than crash
+    return [] // corrupted: nothing worth moving
   }
 }
 
-export function saveSets(sets: SavedSet[]) {
-  localStorage.setItem(KEY, JSON.stringify(sets.slice(0, MAX_SETS)))
+/** One-time move of an older version's browser data to the account. It goes to the first
+ * account that opens Prep in this browser (that data never said whose it was). */
+async function migrateLocal() {
+  const stars = readLocal<{ key: string; question: PrepQuestion; topic: string; experience: string }>(OLD_STAR_KEY)
+  const sets = readLocal<SavedSet>(OLD_SET_KEY)
+  if (!stars.length && !sets.length) return
+  // Oldest first, so the newest star ends up newest on the server too.
+  for (const s of [...stars].reverse()) {
+    await api('/prep/starred', { method: 'PUT', json: { key: s.key, question: s.question, topic: s.topic, experience: s.experience } })
+  }
+  if (sets[0] && !(await api<SavedSet | null>('/prep/current'))) {
+    await api('/prep/current', { method: 'PUT', json: { data: upgrade(sets[0]) } })
+  }
+  localStorage.removeItem(OLD_STAR_KEY)
+  localStorage.removeItem(OLD_SET_KEY)
 }
 
+// Both queries wait for the same migration, which runs once per page load.
+let migration: Promise<void> | null = null
+const migrated = () => (migration ??= migrateLocal().catch(() => { migration = null }))
+
+/** The current study set saved on the account (null = none yet). */
+export function useCurrentSet() {
+  return useQuery({
+    queryKey: ['prep-current'],
+    queryFn: async () => {
+      await migrated()
+      const set = await api<SavedSet | null>('/prep/current')
+      return set ? upgrade(set) : null
+    },
+    staleTime: Infinity, // this page is the only writer, and it updates the cache itself
+  })
+}
+
+/** Returns save(set): updates the cache at once and writes to the account shortly after.
+ * Marks can be clicked quickly in a row; a short debounce sends one write for the burst. */
+export function useSaveCurrentSet() {
+  const queryClient = useQueryClient()
+  return (set: SavedSet | null) => {
+    queryClient.setQueryData(['prep-current'], set)
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => {
+      saveTimer = null
+      void (set ? api('/prep/current', { method: 'PUT', json: { data: set } }) : api('/prep/current', { method: 'DELETE' }))
+    }, 400)
+  }
+}
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+
 // ------------------------------------------------------------------ starred questions
-// Questions a student stars to revise later, kept in this browser like the sets. Each star
-// keeps a full copy of the question (with its answer), so it survives the set being replaced.
+// Questions a student stars to revise later. Each star keeps a full copy of the question (with
+// its answer), so it survives the set being replaced.
 export interface StarredQuestion {
+  id: string | null // null for a moment, while a new star is being saved
   key: string // normalised question text: the same question is starred only once
   question: PrepQuestion
   topic: string
   experience: ExperienceLevel
-  starredAt: number
+  created_at: string
 }
-
-const STAR_KEY = 'mockinterview_starred_v1'
 
 export const starKey = (question: string) => question.trim().toLowerCase().replace(/\s+/g, ' ')
 
-export function loadStarred(): StarredQuestion[] {
-  try {
-    return JSON.parse(localStorage.getItem(STAR_KEY) ?? '[]') as StarredQuestion[]
-  } catch {
-    return []
-  }
+export function useStarred() {
+  return useQuery({
+    queryKey: ['starred'],
+    queryFn: async () => {
+      await migrated()
+      return api<StarredQuestion[]>('/prep/starred')
+    },
+  })
 }
 
-export function saveStarred(items: StarredQuestion[]) {
-  localStorage.setItem(STAR_KEY, JSON.stringify(items))
+interface StarChange {
+  question: PrepQuestion
+  topic: string
+  experience: ExperienceLevel
+  existing: StarredQuestion | undefined // decided BEFORE the optimistic update changes the cache
+}
+
+/** Returns toggle(question, topic, level): star or unstar, shown at once (optimistic) and
+ * saved to the account; on failure the list goes back to what it was. */
+export function useToggleStar() {
+  const queryClient = useQueryClient()
+  const mutation = useMutation({
+    mutationFn: async ({ question, topic, experience, existing }: StarChange) => {
+      if (existing) {
+        // A star still being saved has no id yet: the refetch in onSettled settles it.
+        if (existing.id) await api(`/prep/starred/${existing.id}`, { method: 'DELETE' })
+      } else {
+        await api('/prep/starred', { method: 'PUT', json: { key: starKey(question.question), question, topic, experience } })
+      }
+    },
+    onMutate: async ({ question, topic, experience, existing }: StarChange) => {
+      await queryClient.cancelQueries({ queryKey: ['starred'] })
+      const before = queryClient.getQueryData<StarredQuestion[]>(['starred']) ?? []
+      const key = starKey(question.question)
+      const next = existing
+        ? before.filter((s) => s.key !== key)
+        : [{ id: null, key, question, topic, experience, created_at: new Date().toISOString() }, ...before]
+      queryClient.setQueryData(['starred'], next)
+      return { before }
+    },
+    onError: (_e, _v, ctx) => { if (ctx) queryClient.setQueryData(['starred'], ctx.before) },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ['starred'] }),
+  })
+  return (question: PrepQuestion, topic: string, experience: ExperienceLevel) => {
+    const key = starKey(question.question)
+    const existing = queryClient.getQueryData<StarredQuestion[]>(['starred'])?.find((s) => s.key === key)
+    mutation.mutate({ question, topic, experience, existing })
+  }
 }

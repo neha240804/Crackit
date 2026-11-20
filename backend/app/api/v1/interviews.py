@@ -5,7 +5,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, KeyedUser
 from app.core.rate_limit import per_user
 from app.schemas.interview import (
     InterviewConfig,
@@ -16,7 +16,6 @@ from app.schemas.interview import (
 )
 from app.services import interview_service as svc
 from app.services import tts
-from app.services.usage import ai_budget
 
 router = APIRouter(prefix="/interviews", tags=["mock interview"])
 
@@ -50,11 +49,10 @@ async def text_to_speech(body: TTSRequest, user: CurrentUser) -> Response:
 
 @router.post("", response_model=InterviewSessionOut, status_code=201,
              dependencies=[per_user("interview-start", times=5, seconds=600)])
-async def start_interview(config: InterviewConfig, user: CurrentUser, db: DbSession):
-    """Create a session; returns the interviewer's opening line. Counts against the daily
-    allowance once; answers and the report within it don't."""
-    async with ai_budget(db, user, "interview"):
-        return await svc.start(db, user, config)
+async def start_interview(config: InterviewConfig, user: KeyedUser, db: DbSession):
+    """Create a session; returns the interviewer's opening line. Needs the user's own Groq
+    key (KeyedUser), like every route that calls the AI."""
+    return await svc.start(db, user, config)
 
 
 @router.get("", response_model=list[InterviewSummaryOut])
@@ -77,7 +75,7 @@ async def begin_interview(session_id: uuid.UUID, user: CurrentUser, db: DbSessio
 @router.post("/{session_id}/transcribe", response_model=TranscriptOut,
              dependencies=[per_user("transcribe", times=40, seconds=60)])
 async def transcribe(
-    session_id: uuid.UUID, user: CurrentUser, db: DbSession, audio: Annotated[UploadFile, File()]
+    session_id: uuid.UUID, user: KeyedUser, db: DbSession, audio: Annotated[UploadFile, File()]
 ):
     """Speech-to-text only (no change to the interview). Used speculatively during pauses."""
     return await svc.transcribe_only(db, user, session_id, audio)
@@ -87,7 +85,7 @@ async def transcribe(
              dependencies=[per_user("answer", times=20, seconds=60)])
 async def answer(
     session_id: uuid.UUID,
-    user: CurrentUser,
+    user: KeyedUser,
     db: DbSession,
     audio: Annotated[UploadFile | None, File()] = None,
     text: Annotated[str | None, Form()] = None,

@@ -60,8 +60,42 @@ def test_thread_rule_moves_on_after_repeated_misses_but_digs_when_correct():
 
     assert "MUST be new_topic now" in thread_rule(depth=1, misses=2)  # struggling twice
     assert "ALSO incorrect" in thread_rule(depth=1, misses=1)  # one more miss -> move on
-    assert thread_rule(depth=2, misses=0) == ""  # doing well: keep exploring
+    assert "MUST be hint" in thread_rule(depth=2, misses=0)  # first miss -> hint and retry
     assert "follow-ups on this thread" in thread_rule(depth=3, misses=0)  # depth cap
+
+
+def test_non_answers_get_an_honest_line_not_praise():
+    from app.agents.interview.graph import non_answer_reaction
+
+    asked = non_answer_reaction("Can you just tell me the answer?", 4)
+    assert asked and "feedback report" in asked
+    for reply in ("I'm not really sure, I don't know.", "No idea, sorry", "Can we skip this one?"):
+        line = non_answer_reaction(reply, 3)
+        assert line and line.startswith("No worries") and "great" not in line.lower(), reply
+    # Real attempts keep the model's own reaction (which may credit what was right).
+    assert non_answer_reaction("I guess it depends on the load somehow.", 3) is None
+    assert non_answer_reaction("The current will pass through the neutral to earth.", 3) is None
+    long = "I'm not sure about the exact figure, but the no-load current is small because " * 2
+    assert non_answer_reaction(long, 3) is None
+
+
+def test_interviewer_hints_and_never_gives_the_answer():
+    """Students asked for hints, not answers: a weak answer gets a hint and one retry, a
+    second miss moves on WITHOUT revealing the answer (the report has model answers)."""
+    from app.agents.interview import prompts
+    from app.agents.interview.graph import thread_rule
+    from app.schemas.interview import InterviewerTurn, InterviewerTurnWithSwitch
+
+    assert "hint" in InterviewerTurn.model_fields["next_move"].annotation.__args__
+    texts = [prompts.INTERVIEWER_PROMPT, prompts.SWITCH_PROMPT,
+             *(thread_rule(d, m) for d in (0, 3) for m in (0, 1, 2)),
+             InterviewerTurnWithSwitch.model_fields["switch_reaction"].description]
+    for text in texts:
+        lowered = text.lower()
+        for phrase in ("give the correct idea", "give the answer briefly", "correct idea in one"):
+            assert phrase not in lowered, phrase
+    assert "NEVER GIVE THE ANSWER" in prompts.INTERVIEWER_PROMPT
+    assert "Do NOT give the answer" in prompts.SWITCH_PROMPT
 
 
 def test_speech_text_normalisation():

@@ -10,11 +10,11 @@ import { Link, useNavigate } from 'react-router'
 import { PageHero } from '@/components/PageHero'
 import { Card, ErrorAlert, Eyebrow, Spinner } from '@/components/ui'
 import { buttonClass, fieldClass } from '@/components/ui/styles'
-import { useGroqKey, useUsage } from '@/features/account/api'
+import { useGroqKey } from '@/features/account/api'
 import { useAuth } from '@/features/auth/context'
 import { useInterviews } from '@/features/interview/api'
 import { FORMAT_TONE } from '@/features/interview/constants'
-import { loadStarred } from '@/features/prep/api'
+import { useStarred } from '@/features/prep/api'
 import { toolById } from '@/features/product'
 import { useResumes } from '@/features/resume/api'
 import type { InterviewSummary, InterviewType } from '@/lib/types'
@@ -91,9 +91,9 @@ function HistoryList({ done }: { done: InterviewSummary[] }) {
 }
 
 const MODES: { type: InterviewType; icon: typeof BookOpen; title: string; text: string; needsResume?: boolean }[] = [
-  { type: 'topic', icon: BookOpen, title: 'Any topic', text: 'Machines, power systems, protection: you choose' },
+  { type: 'topic', icon: BookOpen, title: 'Any topic', text: 'Any subject or skill: you choose' },
   { type: 'resume', icon: FileText, title: 'Your resume', text: 'Your project, internship and training', needsResume: true },
-  { type: 'jd', icon: Briefcase, title: 'A job post', text: 'Rehearse for one GET or PSU role', needsResume: true },
+  { type: 'jd', icon: Briefcase, title: 'A job post', text: 'Rehearse for one specific role', needsResume: true },
   { type: 'hr', icon: Users, title: 'HR & behavioral', text: 'Relocation, site work, motivation' },
 ]
 
@@ -108,8 +108,8 @@ const FACTS: [string, string][] = [
 const TIPS = [
   ['Think out loud', 'Interviewers grade reasoning, not just answers. Say what you are weighing before you decide.'],
   ['Lead with the answer', 'One sentence that answers the question, then the detail. It keeps you from rambling.'],
-  // The most reported question in core and PSU interviews is the final-year project or internship.
-  ['Know your project cold', 'Core panels often spend longest on your project or internship. Be ready to draw it and defend every number.'],
+  // The most reported interview question for graduates is the final-year project or internship.
+  ['Know your project cold', 'Interviewers often spend longest on your project or internship. Be ready to draw it and defend every number.'],
   ['Pause instead of filling', 'A short silence sounds confident. "Um" and "like" are counted in your report.'],
 ]
 
@@ -136,7 +136,7 @@ export function DashboardPage() {
   const interviews = useInterviews()
   const resumes = useResumes('interview')
   const hasResume = Boolean(resumes.data?.some((r) => r.status === 'ready'))
-  const [starredCount] = useState(() => loadStarred().length) // starred questions live in this browser
+  const starredCount = useStarred().data?.length ?? 0 // saved on the account
   const list = interviews.data ?? []
   const done = list.filter((i) => i.status === 'completed')
   const scored = done.map((i) => i.overall_score).filter((s): s is number => s != null)
@@ -145,9 +145,7 @@ export function DashboardPage() {
   const minutes = done.reduce((sum, i) => sum + i.duration_minutes, 0)
   const interview = toolById('interview')
   const groqKey = useGroqKey()
-  const usage = useUsage()
-  const onSharedAllowance = groqKey.data != null && !(groqKey.data.saved && groqKey.data.readable)
-  const interviewsLeft = usage.data ? Math.max(0, usage.data.interview.limit - usage.data.interview.used) : null
+  const needsKey = !(groqKey.data.saved && groqKey.data.readable)
 
   const navigate = useNavigate()
 
@@ -178,18 +176,30 @@ export function DashboardPage() {
         </div>
       )}
 
-      {/* Without their own key, users share the site's small free allowance: say so up front,
-          with the one step that removes the limit, instead of surprising them later. */}
-      {onSharedAllowance && interviewsLeft != null && (
-        <Link to="/settings"
-          className="group mb-8 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-ink-200 bg-white px-6 py-4 transition-colors hover:border-ink-300">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700"><KeyRound className="size-4" aria-hidden /></span>
-          <p className="min-w-0 flex-1 text-sm text-ink-700">
-            <span className="font-medium text-ink-900">{interviewsLeft} of {usage.data!.interview.limit} free mock interviews left today.</span>{' '}
-            Add your own free Groq key for no daily limit. It takes two minutes.
-          </p>
-          <span className="inline-flex w-full items-center gap-1.5 pl-12 text-sm font-medium text-brand-700 sm:w-auto sm:pl-0">Add your key <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden /></span>
-        </Link>
+      {/* Bring-your-own-key only: nothing AI works until the key is added, so this is the
+          first thing a new user sees, above the tools, with the steps and one button. */}
+      {needsKey && (
+        <Card className="mb-8 overflow-hidden border-warning-600/25">
+          <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:p-7">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-warning-50 text-warning-700"><KeyRound className="size-5" aria-hidden /></span>
+            <div className="min-w-0 flex-1">
+              <p className="font-serif text-xl font-semibold">Add your free Groq key to get started</p>
+              <p className="mt-1 text-sm leading-relaxed text-ink-500">
+                Crackit's interviewer, question prep and ATS check run on your own Groq key. Getting one is free, needs no card and takes two minutes. It stays encrypted in this browser.
+              </p>
+              <ol className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-ink-700">
+                {['Sign in at console.groq.com', 'Create an API key', 'Paste it in Settings'].map((step, i) => (
+                  <li key={step} className="flex items-center gap-2">
+                    <span className="flex size-5 items-center justify-center rounded-full bg-ink-100 text-[11px] font-semibold">{i + 1}</span>{step}
+                  </li>
+                ))}
+              </ol>
+            </div>
+            <Link to="/settings" className={buttonClass('primary', 'shrink-0 self-start sm:self-center')}>
+              Add your key <ArrowRight className="size-4" aria-hidden />
+            </Link>
+          </div>
+        </Card>
       )}
 
       {/* ------------------------------------------------ the three tools */}
@@ -219,7 +229,7 @@ export function DashboardPage() {
           </ul>
         </Card>
         <div className="grid gap-5">
-          <ToolCard id="prep" hint={starredCount ? `${starredCount} starred question${starredCount > 1 ? 's' : ''} to revise` : 'Six electrical tracks, any topic, or your resume'} />
+          <ToolCard id="prep" hint={starredCount ? `${starredCount} starred question${starredCount > 1 ? 's' : ''} to revise` : 'Ready-made tracks, any topic, or your resume'} />
           <ToolCard id="ats" hint="Paste a job description for a full match score" />
         </div>
       </section>

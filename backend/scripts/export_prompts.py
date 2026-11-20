@@ -64,11 +64,15 @@ parts = [
     f"MAX_FOLLOW_UPS = {MAX_FOLLOW_UPS}.\n\n"
     "**Struggling: must switch now**\n\n" + block(thread_rule(0, MAX_MISSES)) +
     "\n**Thread exhausted: must switch now**\n\n" + block(thread_rule(MAX_FOLLOW_UPS, 0)) +
-    "\n**One miss already: switch if this answer is also weak**\n\n" + block(thread_rule(0, MAX_MISSES - 1)) +
+    "\n**One miss already (hint given): switch if this answer is also weak**\n\n" + block(thread_rule(0, MAX_MISSES - 1)) +
+    "\n**No miss yet: a weak answer gets a hint and one guided retry**\n\n" + block(thread_rule(0, 0)) +
     "\n**Added in the one-miss case (draft the switch in the same call)**\n\n" + block(
-        "ALSO fill switch_reaction (the correct idea in one short sentence, then 'Let's move on.') "
-        "and switch_question (ONE simple, basic question about '{target}', a single idea). They are "
-        "used if you have to move on.") + "\n",
+        "ALSO fill switch_reaction (warm and WITHOUT the answer: credit only what they really got right; "
+        "after 'I don't know' reassure instead of praising; if they asked for the answer, say it "
+        "will be in their feedback report; then a transition like "
+        "'Let's try something different.') and switch_question (ONE clear, concrete question about "
+        "'{target}' at the candidate's level: a single idea, never a definition). They are used if "
+        "you have to move on.") + "\n",
 
     "### Interviewer personas (inserted as `{name}` / `{style}`)\n\n"
     + "".join(f"- **{p['name']}**: {p['style']}\n" for p in PERSONAS.values()) + "\n",

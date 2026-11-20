@@ -48,7 +48,7 @@ Intermediate: What types of faults occur in a power system? Which is most common
 Hard: What are zero-sequence components, and when does zero-sequence current flow? (Reported: Tata Power)
 Hard: (follow-up) Which matters more in a fault, zero or negative sequence? (Reported: Tata Power)
 Intermediate: Why are quantities expressed in per unit? (Reported: Bajaj Electricals)
-Intermediate: (numerical) Convert a 0.1 per-unit impedance on a 10 MVA base to a 100 MVA base.
+Intermediate: Why do engineers use per-unit values, and why must impedances be brought to a common base before you combine them?
 Good answers cover: single line to ground is most common (about 70-80%), three-phase is usually most severe; zero sequence needs a return path through neutral or earth, and a delta winding blocks it; for a line-to-ground fault the three sequence currents are equal; per unit keeps values in a narrow range, gives the same transformer impedance from both sides and simplifies calculation; Z_new = Z_old x (MVA_new / MVA_old) = 1.0 pu.
 
 ## Reactive power, power factor and voltage control
@@ -56,7 +56,7 @@ Easy: What is power factor and why does it matter to a utility and to an industr
 Intermediate: How do you compensate voltage at a load centre? (Reported: Tata Power)
 Hard: The voltage at a farmer's tubewell at the end of a long low-voltage (415 V LT) line is very low. How would you raise it? (Reported: Tata Power)
 Intermediate: (follow-up) What happens if you over-correct the power factor?
-Hard: (numerical) A 100 kW load runs at 0.7 lagging. How much capacitor kVAR raises the power factor to 0.95?
+Hard: How does a capacitor bank improve a lagging power factor, and what goes wrong if you over-correct?
 Good answers cover: low pf means more current for the same power, so more losses, voltage drop and bigger equipment, plus tariff penalties; shunt capacitors, synchronous condensers, SVC and STATCOM, on-load tap changers; for a long LT line: move a distribution transformer closer (HVDS), larger conductor, shunt capacitors, tap setting; over-correction gives leading pf and overvoltage; Qc = P (tan phi1 - tan phi2) = 100 (1.020 - 0.329) about 69 kVAR.
 
 ## Load flow and power system studies

@@ -13,6 +13,12 @@ read it as "beginner" and asked definitions: "what does CRUD stand for?" to a st
 just described their schema, "explain Ohm's law" to one whose project was Newton-Raphson load
 flow. Real interviews ask how and why, what-if, how you would solve or debug something, and
 about your own work, at every difficulty.
+
+No numericals (product decision, Nov 2026): no question anywhere may need a calculation (no
+values to compute, formulas to solve or sizes to work out). In a voice interview nobody can do
+the working, and the fast model also got its own arithmetic wrong. Ask for the reasoning
+behind a calculation instead ("what decides a transformer's fault level?"). The rule lives in
+REAL_QUESTION_STYLE, which every question-writing prompt includes.
 """
 
 from typing import Literal
@@ -34,16 +40,15 @@ LEVEL_GUIDE = {
     ),
     "intermediate": (
         "Intermediate = applied questions: compare and choose, what happens when a condition "
-        "changes, a realistic site or project situation, a short calculation, or a follow-up "
+        "changes, a realistic site or project situation, or a follow-up "
         "that links two ideas (for example what you give up with star-delta starting, why a CT "
         "secondary must never be left open)."
     ),
     "hard": (
         "Hard = deep reasoning: troubleshooting with several possible causes, design and "
-        "selection decisions with trade-offs, numericals with the working, and edge cases (for "
-        "example why a transformer differential relay can trip on energisation and how harmonic "
-        "restraint prevents it, sizing a capacitor bank, relay coordination). Expect the "
-        "candidate to justify each step."
+        "selection decisions with trade-offs, and edge cases (for example why a transformer "
+        "differential relay can trip on energisation and how harmonic restraint prevents it, "
+        "how relays are coordinated). Expect the candidate to justify each step."
     ),
 }
 
@@ -54,8 +59,12 @@ REAL_QUESTION_STYLE = """Real interviewers ask questions like these (shape, not 
 - A realistic scenario: "A motor keeps tripping on start. What do you check first?"
 - Why/how and what-if: "Why does Newton-Raphson converge faster than Gauss-Seidel, and when can it fail?"
 - Compare and choose: "When would you choose a VFD over a star-delta starter?"
-- Debug or estimate: "Users see stale data after an update. Where would you look?"
-They do NOT quiz definitions ("What is CRUD?", "Define a relay", "State Ohm's law")."""
+- Debug: "Users see stale data after an update. Where would you look?"
+They do NOT quiz definitions ("What is CRUD?", "Define a relay", "State Ohm's law").
+NEVER ask a numerical or calculation question: nothing that needs values computed, a formula
+solved or a size worked out ("Find the slip at 1440 rpm", "How much kVAR do you need?", "What
+voltage does the secondary give?"). Ask for the reasoning instead ("Why does an induction
+motor run below synchronous speed?", "What decides how much correction you need?")."""
 
 
 def normalize_level(value: object) -> object:

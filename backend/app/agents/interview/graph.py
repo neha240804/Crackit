@@ -148,6 +148,34 @@ def route_after_listen(state: InterviewState) -> str:
 
 MISSES = {"incorrect", "unclear", "partially_correct"}
 
+# Replies that are not an attempt at the question. Told in the prompt to "reassure, don't
+# praise" after these, the fast model still said "Great effort!" to "I don't know" and
+# "That's a good start!" to "Can you just tell me the answer?" (scripted interview), which
+# sounds fake. So when moving on after one of these, code says a fixed, honest line instead.
+ASKED_FOR_ANSWER = re.compile(
+    r"\b(tell|give|say)\b.{0,15}\b(me|us)\b.{0,15}\banswer\b|\bwhat('?s| is) the (right |correct )?answer\b",
+    re.IGNORECASE)
+DONT_KNOW = re.compile(
+    r"\b(i )?(don'?t|do not) know\b|\bno idea\b|\bnot (really |very )?sure\b|\bno clue\b"
+    r"|\b(i )?can'?t (recall|remember)\b|\bskip (this|it|that)\b|\b(i'?ll|i will|let me) pass\b|^\s*pass\b",
+    re.IGNORECASE)
+_MOVE_ON = ["Let's try something different.", "Let's move to another area.", "Let's switch gears."]
+
+
+def non_answer_reaction(answer: str, turn_number: int) -> str | None:
+    """A fixed, honest reaction for moving on after a non-answer, or None for a real answer
+    (whose reaction the model writes). The answer is never given: the report has it.
+    Only short replies count, so a real answer that happens to say "not sure" stays the model's."""
+    text = answer.strip()
+    if len(text.split()) > 25:
+        return None
+    move_on = _MOVE_ON[turn_number % len(_MOVE_ON)]  # varied, so it doesn't sound canned
+    if ASKED_FOR_ANSWER.search(text):
+        return f"I'll leave that one for your feedback report, it has a model answer. {move_on}"
+    if DONT_KNOW.search(text):
+        return f"No worries, that one's worth revising later. {move_on}"
+    return None
+
 
 def thread_info(messages: list[dict]) -> tuple[str, int, list[str], int]:
     """(current topic, follow-ups asked on it, topics covered, struggling streak).
@@ -199,18 +227,21 @@ def thread_rule(depth: int, misses: int) -> str:
     """Mandatory instructions, decided in code (the model alone kept digging into topics
     the candidate clearly didn't know)."""
     if misses >= MAX_MISSES:
-        return (f"\nThe candidate's last {misses} answers on this topic were wrong or unclear. "
-                "next_move MUST be new_topic now: give the correct idea in ONE short sentence, "
-                "kindly, then switch to a different focus area.")
+        return (f"\nThe candidate's last {misses} answers on this topic were wrong or unclear, "
+                "even after a hint. next_move MUST be new_topic now: encourage them warmly "
+                "WITHOUT giving the answer, then switch to a different focus area.")
     if depth >= MAX_FOLLOW_UPS:
         return (f"\nYou have already asked {depth} follow-ups on this thread: next_move MUST be "
                 "new_topic now. Briefly wrap up this point in your reaction, then switch.")
     if misses == MAX_MISSES - 1:
-        return ("\nThe candidate's previous answer on this topic was already wrong or unclear. "
-                "If this answer is ALSO incorrect, unclear or only partly correct, next_move MUST "
-                "be new_topic: give the correct idea in one short sentence and move on. Only "
-                "continue this thread if this answer is correct.")
-    return ""
+        return ("\nThe candidate already had a hint on this question. If this answer is ALSO "
+                "incorrect, unclear or only partly correct, next_move MUST be new_topic: "
+                "encourage them WITHOUT giving the answer and move on. Only continue this "
+                "thread if this answer is correct.")
+    # First miss on a question: hint and one guided retry (never the answer).
+    return ("\nIf this answer is incorrect, unclear or only partly correct, next_move MUST be "
+            "hint: a hint in your reaction (never the answer), then the same question again in "
+            "a guided form.")
 
 
 async def interviewer_node(state: InterviewState) -> dict:
@@ -239,9 +270,11 @@ async def interviewer_node(state: InterviewState) -> dict:
     async def ask() -> InterviewerTurn:
         rule = thread_rule(depth, misses)
         if misses == MAX_MISSES - 1:  # struggling: draft the switch now, avoiding a 2nd call
-            rule += ("\nALSO fill switch_reaction (the correct idea in one short sentence, then "
-                     "'Let's move on.') and switch_question (ONE clear, concrete question about "
-                     f"'{target}' at the candidate's level: a single idea, never a definition). "
+            rule += ("\nALSO fill switch_reaction (warm and WITHOUT the answer: credit only what "
+                     "they really got right; after 'I don't know' reassure instead of praising; "
+                     "if they asked for the answer, say it will be in their feedback report; then "
+                     "a transition like 'Let's try something different.') and switch_question (ONE clear, concrete question about "
+                     f"'{target}' at the candidate's level: a single idea, never a definition or a calculation). "
                      "They are used if you have to move on.")
         system = INTERVIEWER_PROMPT.format(
             name=persona["name"], style=persona["style"], title=plan["title"],
@@ -280,7 +313,14 @@ async def interviewer_node(state: InterviewState) -> dict:
                 turn.next_move, turn.focus_area = "new_topic", target
             elif turn.next_move != "new_topic":
                 turn = await switch_topic()
-    spoken = f"{turn.reaction.strip()} {turn.question.strip()}".strip()
+    # Moving on because they're stuck, after a non-answer: an honest fixed line (see above).
+    last = state["messages"][-1]
+    # Any verdict but "correct": "tell me the answer" is sometimes judged not_applicable.
+    if turn.next_move == "new_topic" and turn.assessment != "correct" and last["role"] == "candidate":
+        fixed = non_answer_reaction(last["text"], len(state["messages"]))
+        if fixed:
+            turn.reaction = fixed
+    spoken =f"{turn.reaction.strip()} {turn.question.strip()}".strip()
     msg = {"role": "interviewer", "text": spoken,
            "kind": "question" if turn.next_move == "new_topic" else "follow_up",
            "focus_area": turn.focus_area, "next_move": turn.next_move}

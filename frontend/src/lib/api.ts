@@ -1,9 +1,12 @@
 // One small fetch wrapper used by every API call. It:
 // 1. prefixes /api/v1 (Vite proxies /api to FastAPI in development),
-// 2. attaches the JWT from localStorage as "Authorization: Bearer <token>",
+// 2. attaches the JWT from localStorage as "Authorization: Bearer <token>" (and the user's own
+//    Groq key, if any, as X-Groq-Key),
 // 3. sends JSON bodies (or FormData for file uploads) correctly,
 // 4. turns FastAPI error responses into a readable ApiError,
 // 5. on 401 (expired/invalid token) clears the token and tells the app to log out.
+
+import { activeGroqKey } from '@/features/account/groqKey'
 
 const BASE = '/api/v1'
 const TOKEN_KEY = 'mockinterview_token'
@@ -31,6 +34,10 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
   const token = tokenStore.get()
   if (token) finalHeaders.set('Authorization', `Bearer ${token}`)
+  // The user's own Groq key, if they added one: kept encrypted in this browser only and sent
+  // with each request; the server uses it for that request and stores nothing.
+  const groqKey = activeGroqKey()
+  if (groqKey) finalHeaders.set('X-Groq-Key', groqKey)
 
   let body = options.body
   if (json !== undefined) {

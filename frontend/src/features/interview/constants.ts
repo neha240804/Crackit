@@ -50,8 +50,8 @@ export const INTERVIEWERS: { id: InterviewerId; name: string; style: string }[] 
   { id: 'sara', name: 'Sara', style: 'Calm & structured' },
 ]
 
-// One-tap topics on the New interview page. Electrical engineering first (the main audience,
-// matching the question bank's electrical tracks), then a few common software topics.
+// One-tap topics on the New interview page: just suggestions (any topic can be typed). The
+// ones with a question bank come first, then a few common software topics.
 export const POPULAR_TOPICS = [
   'Transformers', 'Induction motors', 'Synchronous machines', 'Power systems',
   'Protection & switchgear', 'Earthing & safety', 'Power electronics', 'HVDC transmission',

@@ -43,7 +43,7 @@ Good answers cover: multimeter, clamp meter, megger, earth tester, phase-sequenc
 ## Cables and their selection
 Hard: How do you select a cable for an application? (Reported in candidate question lists)
 Intermediate: Compare XLPE and PVC insulated cables. Why are cables armoured?
-Intermediate: (numerical) A 15 kW, 415 V three-phase motor runs at 0.85 pf and 90% efficiency. What full-load current must the cable carry?
+Intermediate: When sizing the supply cable for a three-phase motor, why do its power factor and efficiency matter, and what else decides the cable size?
 Good answers cover: load current, voltage drop (often limited to a few percent), short-circuit withstand, installation method and derating for grouping, temperature and soil; XLPE runs at 90 C against 70 C for PVC, so it carries more current; armour gives mechanical protection and an earth path; I = 15000 / (1.732 x 415 x 0.85 x 0.9) about 27 A, then pick a size with derating.
 
 ## Troubleshooting, maintenance and energy saving

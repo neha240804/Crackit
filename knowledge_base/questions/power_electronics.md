@@ -35,5 +35,5 @@ Good answers cover: rectifier, DC link capacitor, IGBT inverter; varying frequen
 Intermediate: How does a buck converter step voltage down? What is the role of the inductor and diode?
 Easy: What is the difference between a linear regulator and an SMPS?
 Intermediate: How is a solar inverter different from a home UPS inverter?
-Easy: (numerical) A buck converter takes 24 V input at 50% duty cycle. What is the ideal output voltage, and what happens at 25%?
+Easy: How does a buck converter's duty cycle control its output voltage, and what happens as you reduce it?
 Good answers cover: buck output = duty cycle x input (12 V at 50%, 6 V at 25%), inductor stores and releases energy, diode or synchronous switch carries current when the switch is off; linear regulators waste the voltage difference as heat, SMPS switch at high frequency for high efficiency; solar inverters track maximum power (MPPT) and synchronise with the grid, UPS inverters run from batteries during outages.

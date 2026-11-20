@@ -28,7 +28,5 @@ async def health(db: DbSession) -> dict:
     except Exception as exc:  # noqa: BLE001
         checks["qdrant"] = f"error: {exc.__class__.__name__}"
 
-    checks["groq_key"] = "set" if settings.groq_api_key else "missing"
-
     healthy = checks["postgres"] == "ok" and checks["qdrant"] == "ok"
     return {"status": "ok" if healthy else "degraded", "checks": checks}

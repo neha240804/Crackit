@@ -110,3 +110,26 @@ def test_every_question_bank_line_is_tagged_by_difficulty():
         lines = path.read_text(encoding="utf-8").splitlines()
         assert not [ln for ln in lines if old.match(ln)], path.name
         assert sum(bool(allowed.match(ln)) for ln in lines) >= 4, path.name
+
+
+def test_no_numerical_questions_anywhere():
+    """Product decision: no question may need a calculation. The bank has no numericals and
+    every prompt that writes questions forbids them (REAL_QUESTION_STYLE + the switch)."""
+    import re
+
+    from app.agents.common.levels import LEVEL_GUIDE, REAL_QUESTION_STYLE
+    from app.agents.interview.prompts import INTERVIEWER_PROMPT, PLAN_PROMPT, SWITCH_PROMPT
+    from app.rag.knowledge_base import KB_DIR
+    from app.services import prep_service
+
+    calc = re.compile(r"\(numerical\)|\b(calculate|find the (value|current|voltage|speed|slip|rating|equivalent|time constant)|work out|how much \w+ (do|does|is))\b", re.IGNORECASE)
+    for path in (KB_DIR / "questions").glob("*.md"):
+        bad = [ln for ln in path.read_text(encoding="utf-8").splitlines()
+               if re.match(r"^(Easy|Intermediate|Hard): ", ln) and calc.search(ln)]
+        assert not bad, (path.name, bad)
+    assert "NEVER ask a numerical or calculation question" in REAL_QUESTION_STYLE
+    for prompt in (PLAN_PROMPT, INTERVIEWER_PROMPT, prep_service.PREP_PROMPT):
+        assert "{question_style}" in prompt
+    assert "calculation" in SWITCH_PROMPT
+    for text in (*LEVEL_GUIDE.values(), prep_service.PREP_PROMPT):
+        assert not re.search(r"short calculation|quick calculation|numericals with|numerical problem whose", text)

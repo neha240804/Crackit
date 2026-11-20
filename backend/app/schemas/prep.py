@@ -5,10 +5,19 @@ every field is required (no optional fields: strict mode rejects replies that le
 out). Field descriptions are instructions to the model.
 """
 
+import json
 import uuid
+from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from app.agents.common.levels import Level, normalize_level
 
@@ -77,3 +86,36 @@ class PrepTrack(BaseModel):
     id: str
     label: str
     topics: list[str]
+
+
+# ---------------------------------------------------------------- saved prep data (per account)
+class StarredIn(BaseModel):
+    key: str = Field(min_length=1, max_length=600)  # normalised question text
+    question: PrepQuestion
+    topic: str = Field(max_length=255)
+    experience: Level
+
+    @field_validator("experience", mode="before")
+    @classmethod
+    def legacy_level(cls, value):
+        return normalize_level(value)
+
+
+class StarredOut(StarredIn):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    created_at: datetime
+
+
+class CurrentSetIn(BaseModel):
+    """The current study set as the Prep page holds it (questions, marks, topic, level...).
+    Free-form JSON, only stored and returned; bounded so one user can't store megabytes."""
+
+    data: dict
+
+    @model_validator(mode="after")
+    def bounded(self) -> "CurrentSetIn":
+        if len(json.dumps(self.data)) > 200_000:
+            raise ValueError("Study set is too large")
+        return self

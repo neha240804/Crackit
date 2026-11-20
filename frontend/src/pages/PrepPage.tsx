@@ -17,13 +17,13 @@ import {
 import { useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
-import { Button, Card, ErrorAlert } from '@/components/ui'
+import { Button, Card, ErrorAlert, Spinner } from '@/components/ui'
 import { buttonClass, fieldClass } from '@/components/ui/styles'
 import { HeroStep, PageHero } from '@/components/PageHero'
 import { LevelBars, LevelPicker } from '@/components/LevelPicker'
 import { DIFFICULTY, EXPERIENCE } from '@/features/interview/constants'
 import {
-  loadSets, loadStarred, saveSets, saveStarred, starKey, useGeneratePrep, useTracks,
+  starKey, useCurrentSet, useGeneratePrep, useSaveCurrentSet, useStarred, useToggleStar, useTracks,
   type Mark, type PrepKind, type SavedSet, type StarredQuestion,
 } from '@/features/prep/api'
 import { useSelectedInterviewResume } from '@/features/resume/api'
@@ -39,7 +39,7 @@ import { cn } from '@/lib/utils'
 type TrackLook = { icon: LucideIcon; tone: string; ring: string; dot: string; tile: string; edge: string }
 const TRACK_STYLE: Record<string, TrackLook> = {
   any: { icon: Search, tone: 'bg-ink-100 text-ink-700', ring: 'ring-ink-300', dot: 'bg-ink-400', tile: 'bg-ink-100/70', edge: 'border-ink-200' },
-  // electrical engineering (shown first: Crackit is aimed mainly at electrical students)
+  // tracks with the deepest question bank (shown first)
   electrical_machines: { icon: Cog, tone: 'bg-brand-50 text-brand-700', ring: 'ring-brand-500/40', dot: 'bg-brand-500', tile: 'bg-brand-50', edge: 'border-brand-200' },
   power_systems: { icon: Zap, tone: 'bg-warning-50 text-warning-700', ring: 'ring-warning-600/40', dot: 'bg-warning-600', tile: 'bg-warning-50', edge: 'border-warning-600/25' },
   protection_switchgear: { icon: ShieldCheck, tone: 'bg-danger-50 text-danger-700', ring: 'ring-danger-600/30', dot: 'bg-danger-600', tile: 'bg-danger-50', edge: 'border-danger-600/20' },
@@ -387,11 +387,21 @@ const MODES: { id: Mode; icon: LucideIcon; title: string; text: string; tone: st
     tone: 'bg-warning-50 text-warning-700', on: 'border-warning-600 bg-warning-50/70 ring-1 ring-warning-600/30', check: 'border-warning-600 bg-warning-600 text-white', badge: 'bg-warning-600' },
 ]
 
+/** Loads the saved set from the account first, so the page starts from it (no flash of an
+ * empty page, and no effect copying server data into state). */
 export function PrepPage() {
+  const current = useCurrentSet()
+  if (current.isPending) return <div className="grid min-h-[40vh] place-items-center"><Spinner /></div>
+  // A failed load still opens the page (empty), rather than blocking study.
+  return <PrepPageInner initial={current.data ? [current.data] : []} />
+}
+
+function PrepPageInner({ initial }: { initial: SavedSet[] }) {
   const tracks = useTracks()
   const generate = useGeneratePrep()
-  const [sets, setSets] = useState<SavedSet[]>(loadSets)
-  const [activeId, setActiveId] = useState<string | null>(() => loadSets()[0]?.id ?? null)
+  const saveCurrent = useSaveCurrentSet()
+  const [sets, setSets] = useState<SavedSet[]>(initial)
+  const [activeId, setActiveId] = useState<string | null>(initial[0]?.id ?? null)
   // Which request is running: a new topic set, a new resume set, or "more" for a set id.
   const [pending, setPending] = useState<Source | 'more' | null>(null)
   const [moreFor, setMoreFor] = useState<string | null>(null) // set id being extended
@@ -399,20 +409,10 @@ export function PrepPage() {
   // ?tab=starred opens the starred list directly (the dashboard links there).
   const [params] = useSearchParams()
   const [mode, setMode] = useState<Mode>(params.get('tab') === 'starred' ? 'starred' : 'topic')
-  const [starred, setStarred] = useState<StarredQuestion[]>(loadStarred)
+  // Starred questions are saved on the account; a star keeps the question's topic and level.
+  const starred: StarredQuestion[] = useStarred().data ?? []
   const starredKeys = new Set(starred.map((s) => s.key))
-
-  /** Star or unstar a question (newest first). A star keeps the question's topic and level. */
-  function toggleStar(q: PrepQuestion, topicName: string, level: ExperienceLevel) {
-    const key = starKey(q.question)
-    setStarred((prev) => {
-      const next = prev.some((s) => s.key === key)
-        ? prev.filter((s) => s.key !== key)
-        : [{ key, question: q, topic: topicName, experience: level, starredAt: Date.now() }, ...prev]
-      saveStarred(next)
-      return next
-    })
-  }
+  const toggleStar = useToggleStar()
   // By topic
   const [track, setTrack] = useState<string | null>(null)
   const [topic, setTopic] = useState('')
@@ -433,12 +433,13 @@ export function PrepPage() {
   const activeReview = active ? Object.values(active.marks).filter((m) => m === 'review').length : null
 
   // Always derive from the LATEST sets: generation takes seconds, and marks made meanwhile
-  // must not be overwritten by a list captured when the request started. (saveSets is
-  // idempotent, so React running the updater twice in dev is harmless.)
+  // must not be overwritten by a list captured when the request started. Only the newest set
+  // is kept (questions worth keeping are starred). Saving is idempotent and debounced, so React
+  // running the updater twice in dev is harmless.
   function update(fn: (prev: SavedSet[]) => SavedSet[]) {
     setSets((prev) => {
-      const next = fn(prev)
-      saveSets(next)
+      const next = fn(prev).slice(0, 1)
+      saveCurrent(next[0] ?? null)
       return next
     })
   }
@@ -532,11 +533,12 @@ export function PrepPage() {
               {mode === 'topic' ? (
                 <>
                   <Step n={1} title="Choose a track" hint="or keep “Any topic” and type your own" badge={modeLook.badge}>
-                    {/* Two groups: electrical engineering first (the main audience), then the rest. */}
+                    {/* Two groups: tracks with the deepest question bank first, then the rest.
+                        Headings stay neutral: the site is worded as general, no field is named. */}
                     {[
-                      { title: 'Electrical engineering', dot: 'bg-warning-600', items: [{ id: 'any', label: 'Any topic', topics: [] as string[] }, ...(tracks.data ?? []).filter((t) => ELECTRICAL_TRACKS.has(t.id))] },
+                      { title: 'Popular tracks', dot: 'bg-warning-600', items: [{ id: 'any', label: 'Any topic', topics: [] as string[] }, ...(tracks.data ?? []).filter((t) => ELECTRICAL_TRACKS.has(t.id))] },
                       // HR is not a topic track: it lives under "From your resume", personalised
-                      { title: 'Other tracks', dot: 'bg-mist-500', items: (tracks.data ?? []).filter((t) => !ELECTRICAL_TRACKS.has(t.id) && t.id !== 'hr') },
+                      { title: 'More tracks', dot: 'bg-mist-500', items: (tracks.data ?? []).filter((t) => !ELECTRICAL_TRACKS.has(t.id) && t.id !== 'hr') },
                     ].filter((g) => g.items.length > 0).map((group) => (
                       <div key={group.title} className="mt-1 first:mt-0 [&+&]:mt-5">
                         <p className="mb-2 flex items-center gap-2 text-xs font-medium tracking-[0.12em] text-ink-500 uppercase">
