@@ -42,8 +42,14 @@ def load_documents(kb_dir: Path = KB_DIR) -> list[Document]:
                 continue  # the "# Title" preamble
             heading, _, body = section.partition("\n")
             topic = heading.removeprefix("## ").strip()
+            # The subject goes into the embedded text too, so a broad query ("electrical
+            # machines") finds that subject's sections: without it, it matched a metering
+            # section, because no section text said "electrical machines".
+            # An optional `subject:` front-matter line can describe it more fully (the
+            # embedding didn't link "electrical machines" to transformers or induction motors).
+            subject = meta.get("subject") or meta.get("role_family", "general").replace("_", " ")
             docs.append(Document(
-                page_content=f"{topic}\n{body.strip()}",
+                page_content=f"{subject}: {topic}\n{body.strip()}",
                 metadata={
                     "doc_type": meta.get("doc_type", "unknown"),
                     "role_family": meta.get("role_family", "general"),
