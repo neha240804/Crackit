@@ -1,12 +1,11 @@
 // Feedback report for a finished interview. The report is generated on first visit
 // (POST /report) and cached by the backend afterwards.
 
-import { ArrowLeft, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Award, ChevronDown, Cpu, Layers, MessageSquare, Mic, RotateCcw } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 
-import { PageHeader } from '@/components/AppShell'
-import { ScoreCard } from '@/components/Brand'
+import { PageHero } from '@/components/PageHero'
 import { Card, ErrorAlert, Eyebrow, Spinner } from '@/components/ui'
 import { buttonClass } from '@/components/ui/styles'
 import { useInterview, useReport } from '@/features/interview/api'
@@ -35,6 +34,10 @@ function List({ title, dot, items }: { title: string; dot: string; items: string
     </div>
   )
 }
+
+// Score badge on the dark hero: green = likely pass, honey = close, clay-red = needs work.
+const scoreBadge = (score?: number) => score == null ? 'bg-ink-100 text-ink-700'
+  : score >= 70 ? 'bg-success-50 text-success-700' : score >= 50 ? 'bg-warning-50 text-warning-700' : 'bg-danger-50 text-danger-700'
 
 const questionTone = (score: number) => (score >= 7 ? 'text-success-700' : score >= 5 ? 'text-warning-700' : 'text-danger-700')
 
@@ -65,9 +68,18 @@ export function InterviewReportPage() {
       <Link to="/dashboard" className="mb-8 inline-flex items-center gap-1.5 text-sm text-ink-500 transition-colors hover:text-ink-900">
         <ArrowLeft className="size-4" /> Dashboard
       </Link>
-      <PageHeader eyebrow="Feedback report" title={s.title}
-        description={`${formatDate(s.created_at)} · ${s.config.duration_minutes} minutes with ${s.interviewer_name}`}
-        action={<Link to="/interviews/new" className={buttonClass('primary', 'px-6 py-3')}>Practise again</Link>} />
+      {/* the scores sit in the same dark hero as every app page; each badge is coloured by result */}
+      <div className="mb-10">
+        <PageHero eyebrow="Feedback report" title={s.title}
+          description={`${formatDate(s.created_at)} · ${s.config.duration_minutes} minutes with ${s.interviewer_name}`}
+          chips={<Link to="/interviews/new" className="inline-flex items-center gap-1.5 rounded-full bg-paper px-4 py-2 text-sm font-medium text-ink-900 transition-colors hover:bg-white"><RotateCcw className="size-3.5" aria-hidden /> Practise again</Link>}
+          stats={[
+            { label: 'Overall', value: r?.overall_score ?? '–', icon: Award, tone: scoreBadge(r?.overall_score), title: '70 or more: likely to pass at this difficulty' },
+            { label: isHr ? 'Content' : 'Technical', value: r?.technical_score ?? '–', icon: isHr ? MessageSquare : Cpu, tone: scoreBadge(r?.technical_score), title: isHr ? 'Relevance and concrete examples' : 'Knowledge and correctness' },
+            { label: 'Delivery', value: r?.communication_score ?? '–', icon: Mic, tone: scoreBadge(r?.communication_score), title: 'Communication: clarity, pace, conciseness' },
+            { label: 'Structure', value: r?.structure_score ?? '–', icon: Layers, tone: scoreBadge(r?.structure_score), title: isHr ? 'STAR: situation, task, action, result' : 'Order and flow of your answers' },
+          ]} />
+      </div>
 
       {report.isLoading && (
         <Card className="p-8">
@@ -78,19 +90,9 @@ export function InterviewReportPage() {
 
       {r && (
         <div className="space-y-16">
-          <div className="space-y-8">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <ScoreCard label="Overall" score={r.overall_score} hint="70 or more: likely to pass at this level" />
-              <ScoreCard label={isHr ? 'Content' : 'Technical'} score={r.technical_score}
-                hint={isHr ? 'Relevance and concrete examples' : 'Knowledge and correctness'} />
-              <ScoreCard label="Communication" score={r.communication_score} hint="Clarity, pace, conciseness" />
-              <ScoreCard label="Structure" score={r.structure_score}
-                hint={isHr ? 'STAR: situation, task, action, result' : 'Order and flow of your answers'} />
-            </div>
-            <blockquote className="border-l-2 border-brand-500 pl-6 font-serif text-xl leading-relaxed text-ink-700 sm:text-2xl">
-              {r.summary}
-            </blockquote>
-          </div>
+          <blockquote className="rounded-2xl border border-brand-200 bg-brand-50 px-6 py-5 font-serif text-xl leading-relaxed text-ink-700 sm:px-8 sm:py-6 sm:text-2xl">
+            {r.summary}
+          </blockquote>
 
           <section>
             <Eyebrow>How you spoke</Eyebrow>

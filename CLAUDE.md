@@ -13,6 +13,11 @@ resumes (uploaded on the New Interview page for resume-/JD-based interviews) and
 resumes (the ATS checker) are separate lists by design. **Question prep** (`/prep`) gives
 students study sets of interview questions with model answers, grounded in the question bank.
 
+**Audience: mainly electrical engineering students** (core companies and PSUs). The question
+bank's six electrical tracks come from `reports/Electrical fresher interview questions.md`
+(questions candidates reported at NTPC, POWERGRID, BHEL, Tata Power, L&T, Siemens, Schneider,
+ABB, Adani and others, tagged "Reported: company"); they are listed first on the Prep page.
+
 ## Main goal
 
 A realistic, **real-time voice mock interview** that feels like talking to an experienced
@@ -22,7 +27,8 @@ interviewer, not a chatbot reading predefined questions:
   **contextually**: praises correct answers, corrects mistakes in one sentence, digs deeper
   when answers are good, and **moves on** when the candidate is struggling.
 - Interview types: **topic** (any subject), **resume-based**, **job-description-based**,
-  **HR & behavioral**. Levels: fresher, 1-3, 3-5, 5+ years. Durations: 5/10/15 min.
+  **HR & behavioral**. Difficulty: easy, intermediate, hard (was experience bands; the API field
+  is still `experience`, old values map: fresher→easy, 1-3→intermediate, 3-5/5+→hard). Durations: 5/10/15 min.
   Interviewers: Maya, Arjun, Sara (own names, illustrated faceless portraits, no real people).
 - Time-boxed, resumable after a refresh, and ends with a **scored feedback report**
   (per question + communication metrics).
@@ -130,25 +136,26 @@ build_report(): separate function, called after the interview
 | `backend/app/services/prep_service.py`, `api/v1/prep.py`, `schemas/prep.py` | Question prep: tracks from the KB, study-set generation (strict `PrepSet` schema), resume mode (`resume_id`), `is_repeat()` drops reworded repeats in code (word overlap ≥ 0.6; the prompt alone kept re-asking). Nothing stored server-side |
 | `backend/app/agents/common/llm.py` | `get_llm` / `get_structured_llm` (strict json_schema, model fallback) |
 | `backend/app/core/http.py` | Shared Groq HTTP pool (120 s keep-alive) |
-| `backend/app/rag/knowledge_base.py` + `knowledge_base/` | Question banks and rubrics, re-indexed at startup |
+| `backend/app/rag/knowledge_base.py` + `knowledge_base/` | Question banks and rubrics, re-indexed at startup. One `## section` = one chunk; front matter `doc_type`, `role_family` (= Prep track id) and optional `subject` (embedded with every section so broad queries like "electrical machines" find it). Electrical files: `electrical_machines`, `power_systems`, `protection_switchgear`, `earthing_testing_safety`, `power_electronics`, `circuits_control`; core/PSU HR in `hr_behavioral.md`. Keep sections under ~1.1k chars (the interviewer reads two per turn; a test enforces < 1.6k) |
 
 ### Key frontend files
 
 | File | Responsibility |
 |---|---|
 | `frontend/src/App.tsx` | Routes: `/` landing, `/login`, `/register`; logged in: `/dashboard`, `/resume`, `/interviews/new`, `/interviews/:id/report` (light, `AppShell` top bar); `/interviews/:id` room (dark, full screen) |
-| `frontend/src/features/product.ts` | **The three tools** (Mock interviews / Question prep / ATS check): one name, icon, colour, tagline and CTA each, shared by the landing page, app nav, dashboard and auth page. Change product wording here |
-| `frontend/src/pages/LandingPage.tsx` | Public page: hero naming all three tools (+ jump links), "three tools" section, how a mock interview works, interview features, report sample, interviewers, closing CTA |
+| `frontend/src/features/product.ts` | **The three tools** (Mock interviews / Question prep / ATS check): one name, icon, colour, tagline and CTA each, shared by the landing page, app nav, dashboard and auth page; also `ELECTRICAL_SUBJECTS` (the six electrical subjects shown on the landing page). Change product wording here |
+| `frontend/src/pages/LandingPage.tsx` | Public page, aimed at electrical students: hero naming all three tools (+ jump links) with an electrical sample exchange (star-delta starting), "made for electrical engineers" subjects section, "three tools" section, how a mock interview works, interview features, report sample, interviewers, closing CTA |
 | `frontend/src/pages/DashboardPage.tsx` | Action first: unfinished interviews → the three tools (interview card holds the 4 formats, `/interviews/new?type=…`) → progress + history → habits and facts below the fold. No duplicate New-interview button (it's in the top bar) |
 | `frontend/src/pages/NewInterviewPage.tsx` | Device checks (fixed column) + interview settings (only this card scrolls on lg); reads `?type=` and `?topic=`; resume/JD formats pick or upload an interview resume (`features/resume/InterviewResumePicker.tsx`) and send `resume_id` |
 | `frontend/src/pages/InterviewRoomPage.tsx` | Full-screen "stage": interviewer centre, captions, small self-view, transcript drawer, bottom dock. Voice only (no typed answers). Phase machine `ready → speaking → listening → processing → …` |
 | `frontend/src/pages/InterviewReportPage.tsx` | Feedback report |
 | `frontend/src/pages/ResumePage.tsx` (`/resume`, nav "ATS check") | Check only: upload/select an ATS resume + optional JD → `POST /optimizer/analyze` → report (`features/ats/AtsReport.tsx`: score, action plan, missing keywords, gaps, format checks). The backend rewrite/DOCX endpoints still exist but have no UI |
-| `frontend/src/pages/PrepPage.tsx` (`/prep`, nav "Question prep") | "How it works" strip (pick / think then reveal / mark), mode switch ("By topic" / "From your resume"), numbered setup (colour-coded track tiles with icons → topic → level with a one-line meaning), live summary of what you will get, one action → study set (difficulty-coloured cards, progress ring); answers hidden until revealed, Got it / Review again marks, progress, "More questions", link to a mock interview. Sets saved in localStorage (`features/prep/api.ts`) |
+| `frontend/src/pages/PrepPage.tsx` (`/prep`, nav "Question prep") | Dark hero band (`PrepHero`: title, the three steps as chips, live stats starred / got it / to review; the starred tile opens the list), mode tabs that light up in their own colour (By topic sage, From your resume clay, Starred honey), colour-filled selected track tiles, difficulty cards with signal bars (`LevelBars`; sage / honey / clay), summary chips beside the action, a track-coloured banner with a progress strip over the set, a solid sage "practise out loud" card. Mode switch ("By topic" / "From your resume"), numbered setup (colour-coded track tiles with icons → topic → level with a one-line meaning), live summary of what you will get, one action → study set (difficulty-coloured cards, progress ring); answers hidden until revealed, Got it / Review again marks, progress, "More questions", link to a mock interview. Every question in a set is at the chosen difficulty (enforced in `prep_service.generate`). Only the current set is kept in localStorage (no "recent sets"); a star on each question saves it to the **Starred questions** tab (`mockinterview_starred_v1`, full copy of question + answer, topic filter) for revision (`features/prep/api.ts`) |
 | `frontend/src/features/interview/media.ts` | Camera/mic, `AnswerRecorder` (VAD), `LiveCaptions`, `speak()` (server voice + adaptive buffering, browser fallback) |
 | `frontend/src/features/interview/api.ts` | API calls; converts `remaining_seconds` to `deadline_ms` outside render |
 | `frontend/src/components/AppShell.tsx`, `Brand.tsx` | Top bar layout, logo, score card; `Avatar` = original faceless SVG portraits per interviewer (maya / arjun / sara) |
 | `frontend/src/index.css` | Design tokens: `paper` (warm off-white), `brand-*` (sage), quiet `clay-*` / `mist-*` secondary tones (per-format `FORMAT_TONE` in `features/interview/constants.ts`), `teal-*` / `plum-*` (extra quiet tones for prep tracks), `ink-*` (warm neutrals), success/warning/danger; Fraunces serif headings + Inter. No gradients or glass effects |
+| `frontend/src/components/PageHero.tsx`, `LevelPicker.tsx` | Shared look of every app page: `PageHero` = the dark band at the top (eyebrow, title, chips such as `HeroStep`, up to 4 live stat tiles with coloured icon badges; Dashboard, Prep, New interview, ATS check, Report, Settings). `LevelPicker` / `LevelBars` = difficulty cards with signal bars (colours in `DIFFICULTY`, `features/interview/constants.ts`). Selected options fill with their colour (sage default; per format `FORMAT_TONE`; per track on Prep), never an ink outline |
 | `frontend/src/components/ui/styles.ts` | `buttonClass()` / `fieldClass` (kept out of `.tsx` so Fast Refresh works) |
 
 ### Voice pipeline (latency-critical)
@@ -223,15 +230,45 @@ https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1 (full 
 - **"Fresher" means a graduate, not a beginner.** The old level text ("easy ... definitions")
   produced textbook one-liners for core subjects; it now asks for campus/PSU-level depth.
 - **Pitch questions like a real interview, everywhere.** `agents/common/levels.py` holds
-  `LEVEL_GUIDE` (what each level expects) and `REAL_QUESTION_STYLE` (own work, scenarios,
+  the three difficulty levels (`Level`, `normalize_level()` for old saved values), `LEVEL_GUIDE`
+  (what easy / intermediate / hard mean) and `REAL_QUESTION_STYLE` (own work, scenarios,
   why/what-if, compare, debug; never definitions). The plan, interviewer, switch and prep
   prompts all include them. Before this the interviewer saw only the label "Fresher", the plan
   said "start with fundamentals" and the switch asked for "a simple, basic question": sampled
   interviews asked "what does CRUD stand for?" and "explain Ohm's law". Don't reintroduce
   "basics"/"simple" wording in prompts or schema descriptions.
-- **Prep uses the strong model only for topics with no question-bank match** (core
-  engineering): the fast model invented terms there ("4-pole vs 6-pole breaker"). Grounded
-  topics and resume sets stay on the fast model. Prep must not assume projects without a resume.
+- **HR prep lives under "From your resume"** (Prep: What to practise > HR & behavioral; API
+  `PrepRequest.kind = "hr"` with `resume_id`): `HR_RESUME_PREP_PROMPT` answers with the resume's
+  real facts (name, college, projects, internship, activities) plus the curated HR list
+  (`hr_bank()`), placeholders for anything the resume can't know (company facts, outcomes,
+  family, weaknesses). The HR track is hidden from the topic tracks; the generic
+  `HR_PREP_PROMPT` still serves `track="hr"` API requests. Residual risk: on a rate-limit
+  fallback to the fast model, some story details get invented.
+- **HR prep has its own prompt (`HR_PREP_PROMPT`, `HR_LEVEL`)** and uses the strong model: the
+  technical prompt produced "suggestion" questions ("Why is teamwork important?"), team-lead
+  scenarios and answers with invented facts ("your 500 MW plant in Gujarat", "saved 15%").
+  HR questions are what panels say (short, one question); answers are first-person templates
+  built on a fresher's real experiences with every specific as a [placeholder].
+- **Prep uses the strong model for electrical tracks and for topics with no question-bank
+  match**: the fast model invented terms ("4-pole vs 6-pole breaker") and, even with the
+  electrical bank, wrote false premises ("adjust an MCCB beyond its breaking capacity", a CT
+  ratio in kVA). Software/HR tracks and resume sets stay on the fast model (`ELECTRICAL_TRACKS`
+  in `prep_service.py`). Prep must not assume projects without a resume. Prep builds each
+  question on the bank (hard sets: at most two invented scenarios, which is where wrong
+  premises appeared) and uses `max_retries=0` so a rate limit switches model at once (one retry
+  waited out the per-minute window: 75 s). Medium reasoning was tried and dropped (no accuracy
+  gain, hit the token limit).
+- **Question bank lines are tagged `Easy:` / `Intermediate:` / `Hard:`** (by question
+  difficulty, not experience); follow-ups and numericals carry `(follow-up)` / `(numerical)`
+  inside the text. A test rejects the old Fresher/Mid/Senior tags.
+- **Interviewer follows the candidate:** after the intro it picks the planned area that fits
+  what they said (it once forced "DC motors" onto a substation internship), and when an answer
+  goes somewhere relevant it follows that thread instead of re-asking.
+- **PDF text can come out one word per line** (some Word-exported PDFs in pypdf's default mode).
+  `document_text._fragmented()` detects it and re-extracts with `extraction_mode="layout"`, which
+  keeps lines and table rows. The ATS education heading also accepts table headers
+  ("Examination | University/Board | ... | CPI/%", "Qualifications"): such a resume scored 0 on
+  headings although every degree was parsed. Tests in `test_optimizer_rules.py`.
 - **Never label every failure "rate limit".** `_ai_error()` logs the real exception; a blanket
   message once hid a schema bug.
 - **Stuck state:** if the interviewer step fails after the answer was recorded, the graph waits

@@ -82,3 +82,31 @@ def test_merge_skills_adds_technologies_and_dedupes_case_insensitively():
 def test_route_stops_on_extraction_error():
     assert route_after_extract({"error": "scanned pdf"}) == END
     assert route_after_extract({"raw_text": "x" * 500}) == "parse_profile"
+
+
+def test_question_bank_tracks_are_labelled_and_complete():
+    """Every question-bank file has a track id with a display label, and every electrical
+    track exists in the bank (the Prep page groups and orders tracks by these ids)."""
+    from app.rag.knowledge_base import load_documents
+    from app.services.prep_service import ELECTRICAL_TRACKS, TRACK_LABELS
+
+    docs = [d for d in load_documents() if d.metadata["doc_type"] == "questions"]
+    families = {d.metadata["role_family"] for d in docs}
+    assert families <= set(TRACK_LABELS), families - set(TRACK_LABELS)
+    assert ELECTRICAL_TRACKS <= families
+    for d in docs:  # sections stay small: the interviewer puts two of them in every turn
+        assert len(d.page_content) < 1600, d.metadata["topic"]
+
+
+def test_every_question_bank_line_is_tagged_by_difficulty():
+    """Each question line starts with Easy:, Intermediate: or Hard: (no experience tags left)."""
+    import re
+
+    from app.rag.knowledge_base import KB_DIR
+
+    allowed = re.compile(r"^(Easy|Intermediate|Hard): ")
+    old = re.compile(r"^(Fresher|Mid|Senior|All levels|Follow-up|Numerical): ")
+    for path in (KB_DIR / "questions").glob("*.md"):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        assert not [ln for ln in lines if old.match(ln)], path.name
+        assert sum(bool(allowed.match(ln)) for ln in lines) >= 4, path.name

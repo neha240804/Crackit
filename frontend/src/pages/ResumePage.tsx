@@ -4,10 +4,10 @@
 // analysis uses the LLM. (The backend can also rewrite a resume, but this page is a
 // checker by design: the candidate makes the changes, guided by the report.)
 
-import { FileText, Gauge, Trash2 } from 'lucide-react'
+import { ClipboardList, FileText, Gauge, ListChecks, Trash2, Upload } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
-import { PageHeader } from '@/components/AppShell'
+import { HeroStep, PageHero } from '@/components/PageHero'
 import { Button, Card, ErrorAlert } from '@/components/ui'
 import { fieldClass } from '@/components/ui/styles'
 import { useAnalyze } from '@/features/ats/api'
@@ -16,13 +16,21 @@ import { useDeleteResume, useResumes, useUploadResume } from '@/features/resume/
 import { UploadDropzone } from '@/features/resume/UploadDropzone'
 import { cn, formatDate } from '@/lib/utils'
 
+/** A numbered step label; the number is a mist badge, the ATS check's colour. */
 function StepLabel({ n, children }: { n: number; children: ReactNode }) {
   return (
-    <p className="flex items-baseline gap-2.5 text-sm font-medium text-ink-900">
-      <span className="font-serif text-brand-600">0{n}</span>{children}
+    <p className="flex items-baseline gap-3 text-sm font-medium text-ink-900">
+      <span className="flex size-6 shrink-0 translate-y-0.5 items-center justify-center rounded-full bg-mist-600 text-[11px] font-semibold text-white">{n}</span>
+      <span>{children}</span>
     </p>
   )
 }
+
+const STEPS = [
+  { icon: Upload, title: 'Upload your resume', tone: 'bg-mist-50 text-mist-700' },
+  { icon: ClipboardList, title: 'Paste the job (optional)', tone: 'bg-clay-50 text-clay-700' },
+  { icon: ListChecks, title: 'Get your score and fixes', tone: 'bg-brand-50 text-brand-700' },
+]
 
 const CHECK_STEPS = ['Checking format and structure', 'Reading the job description', 'Matching keywords and skills', 'Finding gaps and fixes']
 
@@ -59,8 +67,11 @@ export function ResumePage() {
 
   return (
     <div>
-      <PageHeader compact eyebrow="ATS resume check" title="Will your resume get past the filter?"
-        description="Most companies screen resumes with an applicant tracking system before a person reads them. Get your score, see exactly what is missing for the job, and what to fix first. Resumes here are kept separate from your interview resume." />
+      <div className="mb-8">
+        <PageHero compact eyebrow="ATS resume check" title="Will your resume get past the filter?"
+          description="Most companies screen resumes with an applicant tracking system before a person reads them. Get your score, see exactly what is missing for the job, and what to fix first. Resumes here are kept separate from your interview resume."
+          chips={STEPS.map(({ icon, title, tone }, i) => <HeroStep key={title} n={i + 1} icon={icon} tone={tone}>{title}</HeroStep>)} />
+      </div>
 
       {/* ------------------------------------------------ inputs */}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
@@ -76,9 +87,9 @@ export function ResumePage() {
               {list.map((r) => (
                 <li key={r.id}>
                   <div className={cn('flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors',
-                    r.id === selected?.id ? 'border-ink-900 bg-white' : 'border-ink-200 hover:border-ink-300')}>
+                    r.id === selected?.id ? 'border-transparent bg-mist-50 ring-2 ring-mist-500/40' : 'border-ink-200 hover:border-ink-300')}>
                     <button type="button" onClick={() => pick(r.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left" aria-pressed={r.id === selected?.id}>
-                      <FileText className="size-4 shrink-0 text-ink-400" aria-hidden />
+                      <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg', r.id === selected?.id ? 'bg-white text-mist-700' : 'bg-mist-50 text-mist-700')}><FileText className="size-4" aria-hidden /></span>
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium">{r.filename}</span>
                         <span className="block text-xs text-ink-500">

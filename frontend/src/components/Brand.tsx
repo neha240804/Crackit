@@ -1,6 +1,5 @@
-// Brand pieces shared by every page: logo, interviewer portraits, score card.
+// Brand pieces shared by every page: logo and interviewer portraits.
 
-import { Card } from '@/components/ui'
 import type { InterviewerId } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -122,20 +121,5 @@ export function Avatar({ persona, size = 'md', className }: { persona: Interview
         <g transform="translate(-6 -1) scale(1.1)"><Figure p={p} /></g>
       </g>
     </svg>
-  )
-}
-
-export function ScoreCard({ label, score, hint }: { label: string; score: number; hint: string }) {
-  const tone = score >= 75 ? 'text-success-700' : score >= 55 ? 'text-warning-700' : 'text-danger-700'
-  const bar = score >= 75 ? 'bg-success-600' : score >= 55 ? 'bg-warning-600' : 'bg-danger-600'
-  return (
-    <Card className="p-6">
-      <p className="text-xs font-medium tracking-[0.12em] text-ink-500 uppercase">{label}</p>
-      <p className={cn('mt-3 font-serif text-5xl leading-none font-semibold tabular-nums', tone)}>{Math.round(score)}</p>
-      <div className="mt-5 h-1 rounded-full bg-ink-100" aria-hidden>
-        <div className={cn('h-1 rounded-full', bar)} style={{ width: `${Math.min(100, score)}%` }} />
-      </div>
-      <p className="mt-3 text-xs text-ink-500">{hint}</p>
-    </Card>
   )
 }

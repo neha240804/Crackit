@@ -43,7 +43,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       <aside className="hidden flex-col border-r border-ink-200/80 bg-paper-deep/70 p-14 lg:flex">
         <Link to="/" aria-label="Crackit home"><Logo /></Link>
         <div className="my-auto max-w-md">
-          <Eyebrow>Free interview coach</Eyebrow>
+          <Eyebrow>Interview coach for electrical engineers</Eyebrow>
           <p className="mt-6 font-serif text-[2.6rem] leading-[1.1] font-semibold tracking-tight">
             Interviews are conversations. <em className="font-medium text-brand-700">Practise them like one.</em>
           </p>

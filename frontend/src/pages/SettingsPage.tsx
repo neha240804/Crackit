@@ -4,10 +4,10 @@
 // small daily limits. With their own free Groq key, interviews, prep and ATS checks run on
 // their own free quota, with no daily limit from us.
 
-import { CheckCircle2, ExternalLink, KeyRound, Lock, ShieldCheck, Trash2 } from 'lucide-react'
+import { CheckCircle2, ExternalLink, KeyRound, ListChecks, Lock, Mic, ShieldCheck, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 
-import { PageHeader } from '@/components/AppShell'
+import { PageHero } from '@/components/PageHero'
 import { Badge, Button, Card, ErrorAlert, Spinner } from '@/components/ui'
 import { fieldClass } from '@/components/ui/styles'
 import { useGroqKey, useRemoveGroqKey, useSaveGroqKey, useUsage, type UsageAction } from '@/features/account/api'
@@ -180,10 +180,21 @@ function AllowanceCard() {
 
 export function SettingsPage() {
   const { user } = useAuth()
+  const key = useGroqKey()
+  const usage = useUsage()
+  const ownKey = Boolean(key.data?.saved && key.data.readable)
+  const left = (a: UsageAction) => (usage.data ? Math.max(0, usage.data[a].limit - usage.data[a].used) : '–')
   return (
     <div>
-      <PageHeader compact eyebrow="Settings" title="Your account"
-        description={user ? `Signed in as ${user.name} (${user.email}).` : undefined} />
+      <div className="mb-8">
+        <PageHero compact eyebrow="Settings" title="Your account"
+          description={user ? `Signed in as ${user.name} (${user.email}). ${ownKey ? 'Your own key: no daily limits.' : 'The numbers show what is left of today’s free allowance.'}` : undefined}
+          stats={[
+            { label: 'Groq key', value: key.isLoading ? '–' : ownKey ? 'Saved' : 'None', icon: KeyRound, tone: ownKey ? 'bg-success-50 text-success-700' : 'bg-warning-50 text-warning-700' },
+            { label: 'Interviews', value: ownKey ? '∞' : left('interview'), icon: Mic, tone: 'bg-brand-50 text-brand-700', title: ownKey ? 'No daily limit with your own key' : 'Free mock interviews left today' },
+            { label: 'Prep sets', value: ownKey ? '∞' : left('prep'), icon: ListChecks, tone: 'bg-clay-50 text-clay-700', title: ownKey ? 'No daily limit with your own key' : 'Free prep sets left today' },
+          ]} />
+      </div>
       <div className="grid gap-6">
         <KeyCard />
         <AllowanceCard />

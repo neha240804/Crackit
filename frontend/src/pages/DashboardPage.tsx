@@ -3,18 +3,18 @@
 //   formats, question prep, ATS check) → progress and history → habits and how it works.
 // The one "New interview" button lives in the top bar, so the page doesn't repeat it.
 
-import { ArrowRight, ArrowUpRight, BookOpen, Briefcase, ChevronDown, ChevronUp, FileText, KeyRound, Search, Users } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, BookOpen, Briefcase, ChevronDown, ChevronUp, Clock, FileText, Gauge, KeyRound, Mic, Search, Star, Users } from 'lucide-react'
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 
-import { PageHeader } from '@/components/AppShell'
+import { PageHero } from '@/components/PageHero'
 import { Card, ErrorAlert, Eyebrow, Spinner } from '@/components/ui'
 import { buttonClass, fieldClass } from '@/components/ui/styles'
 import { useGroqKey, useUsage } from '@/features/account/api'
 import { useAuth } from '@/features/auth/context'
 import { useInterviews } from '@/features/interview/api'
 import { FORMAT_TONE } from '@/features/interview/constants'
-import { loadSets } from '@/features/prep/api'
+import { loadStarred } from '@/features/prep/api'
 import { toolById } from '@/features/product'
 import { useResumes } from '@/features/resume/api'
 import type { InterviewSummary, InterviewType } from '@/lib/types'
@@ -91,10 +91,10 @@ function HistoryList({ done }: { done: InterviewSummary[] }) {
 }
 
 const MODES: { type: InterviewType; icon: typeof BookOpen; title: string; text: string; needsResume?: boolean }[] = [
-  { type: 'topic', icon: BookOpen, title: 'Any topic', text: 'ML, React, SQL, power systems: you choose' },
-  { type: 'resume', icon: FileText, title: 'Your resume', text: 'Your own projects and experience', needsResume: true },
-  { type: 'jd', icon: Briefcase, title: 'A job post', text: 'Rehearse for one specific role', needsResume: true },
-  { type: 'hr', icon: Users, title: 'HR & behavioral', text: 'Teamwork, challenges, motivation' },
+  { type: 'topic', icon: BookOpen, title: 'Any topic', text: 'Machines, power systems, protection: you choose' },
+  { type: 'resume', icon: FileText, title: 'Your resume', text: 'Your project, internship and training', needsResume: true },
+  { type: 'jd', icon: Briefcase, title: 'A job post', text: 'Rehearse for one GET or PSU role', needsResume: true },
+  { type: 'hr', icon: Users, title: 'HR & behavioral', text: 'Relocation, site work, motivation' },
 ]
 
 // Real benefits of this app, shown below the fold (counts match the product).
@@ -108,7 +108,8 @@ const FACTS: [string, string][] = [
 const TIPS = [
   ['Think out loud', 'Interviewers grade reasoning, not just answers. Say what you are weighing before you decide.'],
   ['Lead with the answer', 'One sentence that answers the question, then the detail. It keeps you from rambling.'],
-  ['Use one real example', 'A specific project beats a general claim. Name what you built and what changed.'],
+  // The most reported question in core and PSU interviews is the final-year project or internship.
+  ['Know your project cold', 'Core panels often spend longest on your project or internship. Be ready to draw it and defend every number.'],
   ['Pause instead of filling', 'A short silence sounds confident. "Um" and "like" are counted in your report.'],
 ]
 
@@ -135,7 +136,7 @@ export function DashboardPage() {
   const interviews = useInterviews()
   const resumes = useResumes('interview')
   const hasResume = Boolean(resumes.data?.some((r) => r.status === 'ready'))
-  const [savedSets] = useState(() => loadSets().length) // study sets live in this browser
+  const [starredCount] = useState(() => loadStarred().length) // starred questions live in this browser
   const list = interviews.data ?? []
   const done = list.filter((i) => i.status === 'completed')
   const scored = done.map((i) => i.overall_score).filter((s): s is number => s != null)
@@ -148,18 +149,21 @@ export function DashboardPage() {
   const onSharedAllowance = groqKey.data != null && !(groqKey.data.saved && groqKey.data.readable)
   const interviewsLeft = usage.data ? Math.max(0, usage.data.interview.limit - usage.data.interview.used) : null
 
-  const stats: [string, number | string][] = [
-    ['Interviews', done.length],
-    ['Average score', avg ?? '–'],
-    ['Best score', scored.length ? Math.max(...scored) : '–'],
-    ['Minutes practised', minutes],
-  ]
+  const navigate = useNavigate()
 
   return (
     <div>
-      <PageHeader compact eyebrow="Dashboard"
-        title={`Good to see you, ${user?.name.split(' ')[0] ?? 'there'}.`}
-        description="What would you like to work on today?" />
+      {/* the same dark hero as every app page; the numbers moved here from a card further down */}
+      <div className="mb-8">
+        <PageHero eyebrow="Dashboard" title={`Good to see you, ${user?.name.split(' ')[0] ?? 'there'}.`}
+          description="What would you like to work on today?"
+          stats={[
+            { label: 'Interviews', value: done.length, icon: Mic, tone: 'bg-brand-50 text-brand-700' },
+            { label: 'Avg score', value: avg ?? '–', icon: Gauge, tone: 'bg-warning-50 text-warning-700', title: scored.length ? `Best: ${Math.max(...scored)}` : undefined },
+            { label: 'Minutes', value: minutes, icon: Clock, tone: 'bg-mist-50 text-mist-700', title: 'Minutes practised' },
+            { label: 'Starred', value: starredCount, icon: Star, tone: 'bg-clay-50 text-clay-700', onClick: () => navigate('/prep?tab=starred'), title: 'Open your starred questions' },
+          ]} />
+      </div>
 
       {active.length > 0 && (
         <div className="mb-8 flex flex-wrap items-center gap-x-5 gap-y-3 rounded-2xl border border-warning-600/20 bg-warning-50 px-6 py-4">
@@ -184,7 +188,7 @@ export function DashboardPage() {
             <span className="font-medium text-ink-900">{interviewsLeft} of {usage.data!.interview.limit} free mock interviews left today.</span>{' '}
             Add your own free Groq key for no daily limit. It takes two minutes.
           </p>
-          <span className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700">Add your key <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden /></span>
+          <span className="inline-flex w-full items-center gap-1.5 pl-12 text-sm font-medium text-brand-700 sm:w-auto sm:pl-0">Add your key <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden /></span>
         </Link>
       )}
 
@@ -215,7 +219,7 @@ export function DashboardPage() {
           </ul>
         </Card>
         <div className="grid gap-5">
-          <ToolCard id="prep" hint={savedSets ? `${savedSets} study set${savedSets > 1 ? 's' : ''} saved` : 'Start with a topic or your resume'} />
+          <ToolCard id="prep" hint={starredCount ? `${starredCount} starred question${starredCount > 1 ? 's' : ''} to revise` : 'Six electrical tracks, any topic, or your resume'} />
           <ToolCard id="ats" hint="Paste a job description for a full match score" />
         </div>
       </section>
@@ -223,18 +227,9 @@ export function DashboardPage() {
       {/* ------------------------------------------------ progress and history */}
       <section className="mt-14">
         <div className="mb-5 flex items-baseline justify-between border-b border-ink-200 pb-4">
-          <h2 className="text-2xl font-semibold">Your progress</h2>
+          <h2 className="text-2xl font-semibold">Your interviews</h2>
           {done.length > 0 && <span className="text-sm text-ink-400">{done.length} completed</span>}
         </div>
-        <Card className="grid grid-cols-2 lg:grid-cols-4">
-          {stats.map(([label, value], i) => (
-            <div key={label} className={cn('p-5 sm:p-6', i % 2 === 1 && 'border-l border-ink-200', i >= 2 && 'border-t border-ink-200 lg:border-t-0', i === 2 && 'lg:border-l')}>
-              <p className="text-xs font-medium tracking-[0.12em] text-ink-500 uppercase">{label}</p>
-              <p className="mt-2.5 font-serif text-3xl leading-none font-semibold tabular-nums">{value}</p>
-            </div>
-          ))}
-        </Card>
-
         {interviews.isLoading && <Spinner />}
         {interviews.isError && <div className="mt-6"><ErrorAlert message={interviews.error.message} /></div>}
         {!interviews.isLoading && done.length === 0 && (

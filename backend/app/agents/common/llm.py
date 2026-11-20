@@ -28,6 +28,7 @@ def get_llm(
     temperature: float = 0.1,
     reasoning_effort: Effort = "low",
     max_tokens: int = 8192,
+    max_retries: int = 1,
 ) -> ChatGroq:
     model = settings.llm_fast_model if tier == "fast" else settings.llm_strong_model
     return ChatGroq(
@@ -38,7 +39,7 @@ def get_llm(
         max_tokens=max_tokens,
         # One quick retry for brief per-minute limits; then with_fallbacks switches model.
         # (4 retries with backoff meant ~8 s of silence before the fallback kicked in.)
-        max_retries=1,
+        max_retries=max_retries,
         timeout=90,
         http_async_client=groq_http_client(),  # reuse warm connections
     )
@@ -49,6 +50,7 @@ def get_structured_llm[SchemaT: BaseModel](
     tier: Tier = "fast",
     temperature: float = 0.1,
     reasoning_effort: Effort = "low",
+    max_retries: int = 1,
 ) -> Runnable:
     """An LLM that must answer with an instance of `schema` (a Pydantic model).
 
@@ -59,7 +61,7 @@ def get_structured_llm[SchemaT: BaseModel](
     - json_schema + strict: complete, valid output every run
     """
     def build(t: Tier) -> Runnable:
-        llm = get_llm(t, temperature, reasoning_effort)
+        llm = get_llm(t, temperature, reasoning_effort, max_retries=max_retries)
         return llm.with_structured_output(schema, method="json_schema", strict=True)
 
     # Groq's free tier limits tokens PER MODEL per day (200k for gpt-oss-120b; hit during

@@ -11,7 +11,14 @@ from app.agents.interview.graph import MAX_FOLLOW_UPS, MAX_MISSES, thread_rule
 from app.agents.optimizer import prompts as optimizer
 from app.agents.profile.graph import PARSE_PROMPT
 from app.schemas.interview import PERSONAS
-from app.services.prep_service import LEVEL_MIX, PREP_PROMPT, RESUME_PREP_PROMPT
+from app.services.prep_service import (
+    HR_LEVEL,
+    HR_PREP_PROMPT,
+    HR_RESUME_PREP_PROMPT,
+    LEVEL_MIX,
+    PREP_PROMPT,
+    RESUME_PREP_PROMPT,
+)
 
 OUT = Path(__file__).resolve().parents[2] / "docs" / "PROMPTS.md"
 
@@ -89,11 +96,21 @@ parts = [
             "question-bank sections (RAG) and the already-asked questions. Reworded repeats are "
             "also dropped in code (`is_repeat()`)."),
     "**Level mix (`{mix}`)**\n\n" + "".join(f"- `{k}`: {v}\n" for k, v in LEVEL_MIX.items()) + "\n",
+    section("HR_PREP_PROMPT", "services/prep_service.py", "HR-round study sets: real HR questions "
+            "with first-person template answers ([placeholders] for every specific).", "strong (temperature 0.5)",
+            HR_PREP_PROMPT, "Used for the HR track or a topic that only matches HR sections. `{hr_level}` below."),
+    "**HR difficulty (`{hr_level}`)**\n\n" + "".join(f"- `{k}`: {v}\n" for k, v in HR_LEVEL.items()) + "\n",
     section("RESUME_PREP_PROMPT", "services/prep_service.py", "Questions an interviewer is likely to "
             "ask about the user's own resume, with first-person answers.", "fast (temperature 0.5)",
             RESUME_PREP_PROMPT,
             "The human message carries the resume as numbered sources (`exp0.b1 …`), the optional "
             "focus and the already-asked questions."),
+    section("HR_RESUME_PREP_PROMPT", "services/prep_service.py", "The HR round personalised from the "
+            "user's resume (Prep: From your resume > HR & behavioral): answers built from the "
+            "resume's real facts.", "strong (temperature 0.5)", HR_RESUME_PREP_PROMPT,
+            "The human message carries the candidate's name, the resume as numbered sources, the "
+            "optional focus, the curated HR questions (all HR sections of the bank) and the "
+            "already-asked questions. `{hr_level}` as above."),
 
     ("## 5. Speech-to-text hint (not an LLM prompt)\n\n"
     "Whisper (`app/services/stt.py`) gets a short vocabulary hint so technical terms are spelled "

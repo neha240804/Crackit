@@ -208,3 +208,18 @@ async def test_own_key_skips_the_daily_budget():
 def test_production_requires_key_encryption_key():
     with pytest.raises(ValidationError, match="KEY_ENCRYPTION_KEY"):
         _prod(key_encryption_key="")
+
+
+# ---------------------------------------------------------------- difficulty levels
+def test_old_experience_values_map_to_difficulty():
+    """Saved interviews and prep sets from before the change still load."""
+    from app.agents.common.levels import level_guide, level_label
+
+    assert InterviewConfig(interview_type="hr", experience="fresher").experience == "easy"
+    assert InterviewConfig(interview_type="hr", experience="5+").experience == "hard"
+    assert PrepRequest(topic="SQL", experience="1-3").experience == "intermediate"
+    assert InterviewConfig(interview_type="hr").experience == "intermediate"  # new default
+    assert level_label("3-5") == "Hard" and level_label("easy") == "Easy"
+    assert "Hard" in level_guide("5+")
+    with pytest.raises(ValidationError):
+        InterviewConfig(interview_type="hr", experience="expert")

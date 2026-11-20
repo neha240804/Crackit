@@ -21,7 +21,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
-from app.agents.common.levels import REAL_QUESTION_STYLE, level_guide
+from app.agents.common.levels import REAL_QUESTION_STYLE, level_guide, level_label
 from app.agents.common.llm import get_structured_llm
 from app.agents.interview.prompts import (
     INTERVIEWER_PROMPT,
@@ -31,7 +31,6 @@ from app.agents.interview.prompts import (
 )
 from app.rag.knowledge_base import RELEVANT_SCORE, get_rubrics, search_knowledge_base
 from app.schemas.interview import (
-    EXPERIENCE_LABEL,
     PERSONAS,
     InterviewerTurn,
     InterviewerTurnWithSwitch,
@@ -102,7 +101,7 @@ async def plan_node(state: InterviewState) -> dict:
     settings_text = (
         f"Type: {TYPE_LABEL[cfg['interview_type']]}\nTopic: {cfg.get('topic') or '-'}\n"
         f"Sub-topics: {', '.join(cfg.get('subtopics', [])) or '-'}\n"
-        f"Level: {EXPERIENCE_LABEL[cfg['experience']]}\nDuration: {cfg['duration_minutes']} min"
+        f"Level: {level_label(cfg['experience'])}\nDuration: {cfg['duration_minutes']} min"
     )
     llm = get_structured_llm(InterviewPlan, tier="fast")
     plan: InterviewPlan = await llm.ainvoke([
@@ -117,10 +116,10 @@ async def plan_node(state: InterviewState) -> dict:
 def opening_node(state: InterviewState) -> dict:
     cfg = state["config"]
     persona = _persona(state)
-    level = EXPERIENCE_LABEL[cfg["experience"]].lower()
+    level = level_label(cfg["experience"]).lower()
     text = (
         f"Hello, I'm {persona['name']}, and I'll be your interviewer today. This is a "
-        f"{cfg['duration_minutes']} minute {level} mock interview on {_subject(cfg)}. "
+        f"{cfg['duration_minutes']} minute mock interview on {_subject(cfg)}, at {level} level. "
         "Take your time with each answer, and speak naturally. To begin, please introduce "
         "yourself briefly."
     )
@@ -247,7 +246,7 @@ async def interviewer_node(state: InterviewState) -> dict:
         system = INTERVIEWER_PROMPT.format(
             name=persona["name"], style=persona["style"], title=plan["title"],
             interview_type=TYPE_LABEL[cfg["interview_type"]],
-            experience=EXPERIENCE_LABEL[cfg["experience"]],
+            experience=level_label(cfg["experience"]),
             level_guide=level_guide(cfg["experience"]), question_style=REAL_QUESTION_STYLE,
             focus_areas="; ".join(plan["focus_areas"]), covered=", ".join(covered) or "none yet",
             thread=thread, depth=depth, thread_rule=rule,
@@ -262,7 +261,7 @@ async def interviewer_node(state: InterviewState) -> dict:
         question as a new topic). An explicit target leaves it nothing to drift back to."""
         system = SWITCH_PROMPT.format(
             name=persona["name"], style=persona["style"],
-            experience=EXPERIENCE_LABEL[cfg["experience"]], current=thread, target=target, kb=kb,
+            experience=level_label(cfg["experience"]), current=thread, target=target, kb=kb,
             level_guide=level_guide(cfg["experience"]),
         )
         turn = await llm.ainvoke([SystemMessage(system), human])
@@ -346,7 +345,7 @@ async def build_report(state: InterviewState) -> dict:
         SystemMessage(REPORT_PROMPT.format(rubrics=get_rubrics())),
         HumanMessage(
             f"Interview: {state['plan']['title']} ({TYPE_LABEL[cfg['interview_type']]}), "
-            f"level {EXPERIENCE_LABEL[cfg['experience']]}.\n\nMEASURED COMMUNICATION METRICS: "
+            f"level {level_label(cfg['experience'])}.\n\nMEASURED COMMUNICATION METRICS: "
             f"{ {k: v for k, v in metrics.items() if k != 'per_answer'} }\n\n"
             "TRANSCRIPT:\n" + "\n".join(numbered)
         ),

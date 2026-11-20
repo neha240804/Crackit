@@ -121,7 +121,9 @@ export interface AnalysisResult {
 
 // ---------------------------------------------------------------- mock interview
 export type InterviewType = 'topic' | 'resume' | 'jd' | 'hr'
-export type ExperienceLevel = 'fresher' | '1-3' | '3-5' | '5+'
+// Question difficulty. The API field is still called `experience` (it used to hold experience
+// bands such as 'fresher'; the backend maps those old values).
+export type ExperienceLevel = 'easy' | 'intermediate' | 'hard'
 export type InterviewerId = 'maya' | 'arjun' | 'sara'
 
 export interface InterviewConfig {
@@ -215,7 +217,7 @@ export interface InterviewSummary {
 // ---------------------------------------------------------------- question prep
 export interface PrepQuestion {
   question: string
-  difficulty: 'easy' | 'medium' | 'hard'
+  difficulty: 'easy' | 'intermediate' | 'hard'
   answer: string
   key_points: string[]
   tip: string

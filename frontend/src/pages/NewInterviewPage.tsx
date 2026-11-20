@@ -10,7 +10,9 @@ import { Avatar } from '@/components/Brand'
 import { Button, Card, ErrorAlert } from '@/components/ui'
 import { buttonClass, fieldClass } from '@/components/ui/styles'
 import { useStartInterview } from '@/features/interview/api'
-import { DURATIONS, EXPERIENCE, FORMAT_TONE, INTERVIEWERS, INTERVIEW_TYPES, POPULAR_TOPICS } from '@/features/interview/constants'
+import { LevelPicker } from '@/components/LevelPicker'
+import { PageHero } from '@/components/PageHero'
+import { DURATIONS, FORMAT_TONE, INTERVIEWERS, INTERVIEW_TYPES, POPULAR_TOPICS } from '@/features/interview/constants'
 import { useAudioLevel, useUserMedia } from '@/features/interview/media'
 import { useSelectedInterviewResume } from '@/features/resume/api'
 import { InterviewResumePicker } from '@/features/resume/InterviewResumePicker'
@@ -39,10 +41,11 @@ function Field({ step, label, children }: { step?: number; label: string; childr
   )
 }
 
-/** Selected state = ink border + white fill; the rest stays quiet on paper. */
+/** Selected state = a sage fill and outline (the same language as Question prep's tiles);
+ * the rest stays quiet on paper. */
 const optionClass = (active: boolean) => cn(
   'border transition-[border-color,background-color,box-shadow] duration-200',
-  active ? 'border-ink-900 bg-white shadow-soft' : 'border-ink-200 bg-white/50 hover:border-ink-300 hover:bg-white',
+  active ? 'border-transparent bg-brand-50 shadow-soft ring-2 ring-brand-500/40' : 'border-ink-200 bg-white/50 hover:border-ink-300 hover:bg-white',
 )
 
 function Choice({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
@@ -99,7 +102,7 @@ export function NewInterviewPage() {
   const [topic, setTopic] = useState(params.get('topic') ?? '')
   const [subtopics, setSubtopics] = useState('')
   const [jdText, setJdText] = useState('')
-  const [experience, setExperience] = useState<ExperienceLevel>('fresher')
+  const [experience, setExperience] = useState<ExperienceLevel>('intermediate')
   const [duration, setDuration] = useState<5 | 10 | 15>(5)
   const [interviewer, setInterviewer] = useState<InterviewerId>('maya')
 
@@ -136,14 +139,12 @@ export function NewInterviewPage() {
     // the shell's top and bottom padding (-my-8), so 2 x 2rem remain: more height for the
     // camera preview and the settings card, which matter more here than a big title.
     <div className="lg:-my-8 lg:flex lg:h-[calc(100dvh-8rem-1px)] lg:flex-col">
-      {/* compact header: this page is a tool, the title only needs to orient */}
-      <header className="mb-8 lg:mb-6 lg:shrink-0">
-        <p className="text-xs font-medium tracking-[0.14em] text-brand-700 uppercase">
-          {pickType ? 'New interview' : `New interview · ${chosen.label}`}
-        </p>
-        <h1 className="mt-3 text-3xl leading-tight font-semibold sm:text-[2rem]">{heading.title}</h1>
-        <p className="mt-1.5 max-w-3xl text-sm text-ink-500 sm:text-[0.95rem]">{heading.text}</p>
-      </header>
+      {/* compact dark hero (the same band as every app page): this page is a tool, the title
+          only needs to orient */}
+      <div className="mb-8 lg:mb-6 lg:shrink-0">
+        <PageHero compact eyebrow={pickType ? 'New interview' : `New interview · ${chosen.label}`}
+          title={heading.title} description={heading.text} />
+      </div>
       <div className="grid gap-10 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_1fr] lg:gap-10">
         {/* ---------------- devices: never scrolls */}
         <div className="space-y-5 lg:flex lg:min-h-0 lg:flex-col lg:space-y-0 lg:gap-5 lg:overflow-hidden">
@@ -191,18 +192,28 @@ export function NewInterviewPage() {
           {pickType ? (
             <Field step={step++} label="Interview type">
               <div className="grid gap-3 sm:grid-cols-2">
-                {INTERVIEW_TYPES.map((t) => (
-                  <button key={t.id} type="button" onClick={() => setType(t.id)} aria-pressed={type === t.id}
-                    className={cn('rounded-2xl p-3.5 text-left', optionClass(type === t.id))}>
-                    <p className="text-sm font-medium">{t.label}</p>
-                    <p className="mt-0.5 text-xs text-ink-500">{t.hint}</p>
-                  </button>
-                ))}
+                {/* each format in its own colour (sage, clay, mist, honey), as on the dashboard */}
+                {INTERVIEW_TYPES.map((t) => {
+                  const on = type === t.id
+                  const tone = FORMAT_TONE[t.id]
+                  return (
+                    <button key={t.id} type="button" onClick={() => setType(t.id)} aria-pressed={on}
+                      className={cn('flex items-start gap-3 rounded-2xl border p-3.5 text-left transition-[border-color,background-color,box-shadow] duration-200',
+                        on ? cn('border-transparent shadow-soft ring-2', tone.soft, tone.ring) : 'border-ink-200 bg-white/50 hover:border-ink-300 hover:bg-white')}>
+                      <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-full', tone.chip, on && 'bg-white')}><t.icon className="size-4" aria-hidden /></span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium">{t.label}</span>
+                        <span className="mt-0.5 block text-xs text-ink-500">{t.hint}</span>
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             </Field>
           ) : (
             // Format already chosen on the dashboard: a one-line summary, not the picker again.
             <div className={cn('flex items-center gap-4 rounded-2xl px-4 py-3', FORMAT_TONE[type].soft)}>
+              <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-full bg-white', FORMAT_TONE[type].chip, 'bg-white')}><chosen.icon className="size-4" aria-hidden /></span>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-medium tracking-[0.12em] text-ink-500 uppercase">Format</p>
                 <p className="mt-0.5 font-serif text-lg font-semibold">{chosen.label}</p>
@@ -226,7 +237,7 @@ export function NewInterviewPage() {
 
           <Field step={step++} label={type === 'topic' ? 'Topic' : type === 'hr' ? 'Target role (optional)' : 'Focus topic (optional)'}>
               <input value={topic} onChange={(e) => setTopic(e.target.value)} maxLength={120} aria-label="Topic"
-                placeholder={type === 'hr' ? 'e.g. Software engineering intern' : type === 'topic' ? 'e.g. Bias-Variance' : 'e.g. Backend APIs, or leave empty'}
+                placeholder={type === 'hr' ? 'e.g. Graduate Engineer Trainee (Electrical)' : type === 'topic' ? 'e.g. Transformers' : 'e.g. Substation protection, or leave empty'}
                 className={cn(fieldClass, 'py-2 text-[13px]')} />
               {type === 'topic' && (
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -249,18 +260,15 @@ export function NewInterviewPage() {
             </Field>
           )}
 
-          <div className="grid gap-8 sm:grid-cols-2">
-            <Field step={step++} label="Experience">
-              <div className="flex flex-wrap gap-2">
-                {EXPERIENCE.map((e) => <Choice key={e.id} active={experience === e.id} onClick={() => setExperience(e.id)}>{e.label}</Choice>)}
-              </div>
-            </Field>
-            <Field step={step++} label="Duration">
-              <div className="flex flex-wrap gap-2">
-                {DURATIONS.map((d) => <Choice key={d} active={duration === d} onClick={() => setDuration(d)}>{d} min</Choice>)}
-              </div>
-            </Field>
-          </div>
+          {/* the same difficulty cards as Question prep */}
+          <Field step={step++} label="Difficulty">
+            <LevelPicker value={experience} onChange={setExperience} />
+          </Field>
+          <Field step={step++} label="Duration">
+            <div className="flex flex-wrap gap-2">
+              {DURATIONS.map((d) => <Choice key={d} active={duration === d} onClick={() => setDuration(d)}>{d} min</Choice>)}
+            </div>
+          </Field>
 
           <Field step={step++} label="Interviewer">
             <div className="grid gap-3 sm:grid-cols-3">

@@ -4,10 +4,11 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
+
+from app.agents.common.levels import Level, normalize_level
 
 InterviewType = Literal["topic", "resume", "jd", "hr"]
-Experience = Literal["fresher", "1-3", "3-5", "5+"]
 
 # Our own interviewer personas (names + style only; no real people's likenesses).
 PERSONAS: dict[str, dict[str, str]] = {
@@ -16,11 +17,6 @@ PERSONAS: dict[str, dict[str, str]] = {
     "sara": {"name": "Sara", "style": "calm, structured and friendly; HR-style conversation"},
 }
 
-EXPERIENCE_LABEL = {
-    "fresher": "Fresher", "1-3": "1-3 years", "3-5": "3-5 years", "5+": "5+ years",
-}
-
-
 # ---------------------------------------------------------------- API input
 class InterviewConfig(BaseModel):
     interview_type: InterviewType
@@ -28,11 +24,18 @@ class InterviewConfig(BaseModel):
     # Limit the length of each item too, not just how many: these go into every prompt, so
     # an unbounded string would inflate token use (and cost) on every interviewer turn.
     subtopics: list[Annotated[str, StringConstraints(max_length=120)]] = Field(default_factory=list, max_length=10)
-    experience: Experience = "fresher"
+    # The question difficulty (easy / intermediate / hard). Still called `experience` so saved
+    # interviews and the API stay compatible; old values ("fresher", "1-3"...) are mapped.
+    experience: Level = "intermediate"
     duration_minutes: Literal[5, 10, 15] = 5
     interviewer: Literal["maya", "arjun", "sara"] = "maya"
     resume_id: uuid.UUID | None = None  # resume / jd types; defaults to the primary resume
     jd_text: str | None = Field(None, max_length=20_000)
+
+    @field_validator("experience", mode="before")
+    @classmethod
+    def legacy_level(cls, value):
+        return normalize_level(value)
 
     @model_validator(mode="after")
     def check_required_fields(self):

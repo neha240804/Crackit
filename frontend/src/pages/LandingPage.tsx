@@ -1,6 +1,7 @@
 // Public landing page. Goal: within five seconds a visitor knows what Crackit is (a free
-// interview coach), the three tools it offers, and where to start.
-//   hero (what it is + all three tools) → the three tools → how a mock interview works →
+// interview coach, mainly for electrical engineering students), the three tools it offers,
+// and where to start.
+//   hero (what it is + all three tools) → electrical subjects covered → the three tools → how a mock interview works →
 //   what the interviewer does → the report → interviewers → one closing call to action.
 // Logged-in visitors go straight to the dashboard.
 
@@ -13,7 +14,7 @@ import { Card, Eyebrow } from '@/components/ui'
 import { buttonClass } from '@/components/ui/styles'
 import { useAuth } from '@/features/auth/context'
 import { FORMAT_TONE, INTERVIEWERS } from '@/features/interview/constants'
-import { TOOLS } from '@/features/product'
+import { ELECTRICAL_SUBJECTS, TOOLS } from '@/features/product'
 import { cn } from '@/lib/utils'
 
 // What makes the mock interview feel real (the tools section already covers prep and ATS).
@@ -21,7 +22,7 @@ const FEATURES: { icon: typeof AudioLines; title: string; text: string }[] = [
   { icon: AudioLines, title: 'Spoken, not typed', text: 'Answer out loud, the way you will on the day. When you finish, the interviewer picks it up from there.' },
   { icon: MessageSquareQuote, title: 'It responds to you', text: 'Credit where you were right, a one-line correction where you were not. Never a generic "thank you".' },
   { icon: Route, title: 'Follow-ups with intent', text: 'Strong answers lead deeper. When you are stuck, it explains the idea and moves on.' },
-  { icon: Layers, title: 'Four formats', text: 'Any topic, your own resume, a specific job post, or HR and behavioral questions, at your level.' },
+  { icon: Layers, title: 'Four formats', text: 'Any electrical subject, your own resume, a specific job post, or the HR round, at your level.' },
   { icon: Captions, title: 'Live captions', text: 'Your words appear as you speak; the interviewer’s appear as they are said.' },
   { icon: Gauge, title: 'Feedback you can use', text: 'Scores for every question, a model answer, and your pace and filler words, measured.' },
 ]
@@ -30,7 +31,7 @@ const FEATURES: { icon: typeof AudioLines; title: string; text: string }[] = [
 const TONES = Object.values(FORMAT_TONE).map((t) => t.chip)
 
 const STEPS = [
-  ['Choose', 'Pick a topic, your resume, a job post or behavioral questions. Set the level, the length and who interviews you.'],
+  ['Choose', 'Pick a subject like transformers or protection, your resume, a job post or the HR round. Set the level, the length and who interviews you.'],
   ['Converse', 'The interviewer asks, listens and follows up on what you said. Just speak naturally; a short pause hands the turn back.'],
   ['Review', 'Read a clear report: what was strong, what was missing, and what a great answer would have covered.'],
 ]
@@ -44,27 +45,28 @@ function TranscriptPreview() {
   return (
     <Card className="overflow-hidden shadow-lift">
       <div className="flex items-center justify-between border-b border-ink-200 px-5 py-3.5 text-xs text-ink-500">
-        <span className="flex items-center gap-2"><span className="size-1.5 animate-pulse rounded-full bg-brand-600" /> Live · Bias–Variance · Fresher</span>
+        <span className="flex items-center gap-2"><span className="size-1.5 animate-pulse rounded-full bg-brand-600" /> Live · Electrical machines · Intermediate</span>
         <span className="tabular-nums">07:42</span>
       </div>
+      {/* A real core-panel question (star-delta starting is among the most reported). */}
       <div className="space-y-5 px-5 py-6 text-[0.94rem] leading-relaxed">
         <div>
           <p className="mb-1 text-[11px] font-medium tracking-[0.12em] text-ink-400 uppercase">Arjun</p>
-          <p className="text-ink-900">Your model scores 99% on training data but 80% on the test set. What is going on?</p>
+          <p className="text-ink-900">A 75 kW pump motor needs starting. Why use a star-delta starter instead of direct-on-line?</p>
         </div>
         <div className="border-l-2 border-brand-200 pl-4">
           <p className="mb-1 text-[11px] font-medium tracking-[0.12em] text-ink-400 uppercase">You</p>
-          <p className="text-ink-700">That gap means it is overfitting: low bias, high variance. I would add regularisation or more data.</p>
+          <p className="text-ink-700">Direct-on-line it draws six or seven times rated current and dips the supply. In star each winding gets 1/√3 of the voltage, so the starting current falls to a third.</p>
         </div>
         <div>
           <p className="mb-1 flex items-center gap-2 text-[11px] font-medium tracking-[0.12em] text-ink-400 uppercase">
             Arjun <span className="flex items-end gap-0.5" aria-hidden>{[3, 6, 4].map((h, i) => <span key={i} className="w-0.5 rounded-full bg-brand-500" style={{ height: h * 2 }} />)}</span>
           </p>
-          <p className="text-ink-900">Right, that is high variance. How would a learning curve confirm it?</p>
+          <p className="text-ink-900">Right. And what do you give up by starting in star?</p>
         </div>
       </div>
       <div className="flex flex-wrap gap-2 border-t border-ink-200 bg-ink-50 px-5 py-3.5 text-xs">
-        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-brand-700">Correct diagnosis</span>
+        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-brand-700">Correct reasoning</span>
         <span className="rounded-full bg-white px-2.5 py-1 text-ink-500 ring-1 ring-ink-200">132 wpm · 1 filler word</span>
       </div>
     </Card>
@@ -101,13 +103,14 @@ export function LandingPage() {
       <section>
         <Container className="grid items-center gap-14 pt-14 pb-20 sm:pt-20 sm:pb-24 lg:grid-cols-12 lg:gap-12">
           <div className="lg:col-span-7">
-            <Eyebrow>Free interview coach</Eyebrow>
+            <Eyebrow>Interview coach for electrical engineers</Eyebrow>
             <h1 className="mt-5 text-[2.6rem] leading-[1.05] font-semibold sm:text-6xl lg:text-[4rem]">
               Practise the conversation, <em className="font-medium text-brand-700">not just the answers.</em>
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink-500">
-              Rehearse with an AI interviewer that speaks and listens, study the questions you&apos;ll be asked,
-              and check how your resume scores against the job. All in one place, free.
+              Rehearse core-company and PSU interviews out loud with an AI interviewer that listens and
+              follows up, study the questions panels really ask on machines, power systems and protection,
+              and check your resume against the job. Free.
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
               <Link to="/register" className={buttonClass('primary', 'px-7 py-3 text-[0.95rem]')}>
@@ -132,6 +135,31 @@ export function LandingPage() {
           <div className="lg:col-span-5">
             <TranscriptPreview />
           </div>
+        </Container>
+      </section>
+
+      {/* ---------------------------------------------------------------- who it's for: electrical subjects */}
+      <section id="subjects" className="scroll-mt-20 border-t border-ink-200/80">
+        <Container className="grid gap-12 py-20 sm:py-24 lg:grid-cols-12">
+          <div className="lg:col-span-4">
+            <Eyebrow>Made for electrical engineers</Eyebrow>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold sm:text-[2.6rem]">The subjects core and PSU panels ask about.</h2>
+            <p className="mt-5 leading-relaxed text-ink-500">
+              Built from questions candidates reported in core-company and PSU interviews: the why behind the
+              theory, practical site questions, and the HR round on relocation, site work and your project.
+            </p>
+          </div>
+          <ul className="grid gap-3 sm:grid-cols-2 lg:col-span-8">
+            {ELECTRICAL_SUBJECTS.map(({ name, icon: Icon, tone, covers }) => (
+              <li key={name} className="flex items-start gap-4 rounded-2xl border border-ink-200 bg-white p-5">
+                <span className={cn('flex size-10 shrink-0 items-center justify-center rounded-full', tone)}><Icon className="size-[18px]" aria-hidden /></span>
+                <div>
+                  <p className="font-serif text-lg font-semibold">{name}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-ink-500">{covers}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
         </Container>
       </section>
 
@@ -220,7 +248,7 @@ export function LandingPage() {
                 <p className="text-xs tracking-[0.12em] text-ink-500 uppercase">Overall</p>
                 <p className="mt-2 font-serif text-6xl leading-none font-semibold text-success-700">78</p>
               </div>
-              <p className="text-right text-sm text-ink-500">Bias–Variance<br />10 minutes with Arjun</p>
+              <p className="text-right text-sm text-ink-500">Induction motor starting<br />10 minutes with Arjun</p>
             </div>
             <dl className="grid grid-cols-3 gap-4 py-6 text-center">
               {[['Technical', 74], ['Clarity', 82], ['Structure', 79]].map(([k, v]) => (
@@ -228,8 +256,9 @@ export function LandingPage() {
               ))}
             </dl>
             <p className="rounded-xl bg-brand-50 p-4 text-sm leading-relaxed text-ink-700">
-              <span className="font-medium text-brand-700">A strong answer</span> would name the train–validation
-              gap, read it from a learning curve, then choose between more data and regularisation.
+              <span className="font-medium text-brand-700">A strong answer</span> would add that starting torque
+              also falls to a third, so star-delta suits light starting loads, and say when a soft starter or VFD is
+              the better choice.
             </p>
           </Card>
         </Container>

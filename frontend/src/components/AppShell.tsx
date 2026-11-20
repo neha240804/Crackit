@@ -3,7 +3,6 @@
 // The bar is solid paper with a hairline border: no blur, no translucency.
 
 import { LayoutGrid, LogOut, Plus } from 'lucide-react'
-import type { ReactNode } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router'
 
 import { Logo } from '@/components/Brand'
@@ -66,23 +65,5 @@ export function AppShell() {
         <Outlet />
       </main>
     </div>
-  )
-}
-
-/** Page title block: optional kicker, serif title, one-line description, optional action.
- * `compact` = for tool pages (ATS check, new interview) where the content matters more
- * than a large editorial title. */
-export function PageHeader({ eyebrow, title, description, action, compact = false }: {
-  eyebrow?: string; title: string; description?: string; action?: ReactNode; compact?: boolean
-}) {
-  return (
-    <header className={cn('flex flex-wrap items-end justify-between gap-6', compact ? 'mb-8' : 'mb-12')}>
-      <div className={compact ? 'max-w-3xl' : 'max-w-2xl'}>
-        {eyebrow && <p className={cn('text-xs font-medium tracking-[0.14em] text-brand-700 uppercase', compact ? 'mb-3' : 'mb-4')}>{eyebrow}</p>}
-        <h1 className={cn('leading-tight font-semibold', compact ? 'text-3xl sm:text-[2rem]' : 'text-4xl sm:text-[2.75rem]')}>{title}</h1>
-        {description && <p className={cn('text-ink-500', compact ? 'mt-1.5 text-sm sm:text-[0.95rem]' : 'mt-3')}>{description}</p>}
-      </div>
-      {action}
-    </header>
   )
 }
