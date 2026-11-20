@@ -102,3 +102,22 @@ def test_expand_ids_adds_parent_entry_context_only():
     assert expand_ids(["proj0.b0"], sources) == ["proj0.b0", "proj0", "proj0.tech"]
     assert "proj1" not in expand_ids(["proj0.b0"], sources)  # never other entries
     assert expand_ids(["skills"], sources) == ["skills"]  # unknown parents are ignored
+
+
+def test_education_table_without_heading_counts_as_education():
+    """Indian resumes often head the education table "Examination | University/Board | ..."
+    with no "Education" title; that once scored 0 although every degree was parsed."""
+    from app.services.ats_rules import HEADINGS
+
+    text = "PROJECTS\nBuilt a relay\n\nExamination University/Board Institute Year CPI/%\nB.E. GTU LDCE 2023-27 8.63"
+    assert HEADINGS["education"].search(text)
+    assert HEADINGS["education"].search("QUALIFICATIONS\nB.Tech")
+    assert not HEADINGS["education"].search("Examined 40 transformers on site")
+
+
+def test_fragmented_pdf_text_is_detected():
+    """pypdf's default mode returns some PDFs one word per line; we then use layout mode."""
+    from app.services.document_text import _fragmented
+
+    assert _fragmented("\n \n".join(["word"] * 60))
+    assert not _fragmented("\n".join(["Developed an Arduino based protection prototype"] * 60))

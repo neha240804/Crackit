@@ -31,7 +31,10 @@ PRONOUN_RE = re.compile(r"\b(i|me|my|mine|we|our)\b", re.IGNORECASE)
 NUMBER_RE = re.compile(r"\d")
 HEADINGS = {
     "experience": re.compile(r"^\s*(work\s+)?(experience|employment|work history|internships?)\b", re.IGNORECASE | re.MULTILINE),
-    "education": re.compile(r"^\s*(education|academic)", re.IGNORECASE | re.MULTILINE),
+    # Indian resumes often put education in a table headed "Examination | University/Board |
+    # Institute | Year | CPI/%" (or "Qualification...") with no "Education" title above it:
+    # such a resume once scored 0 here although every degree was parsed.
+    "education": re.compile(r"^\s*(education|academic|qualifications?\b|examination\b|scholastic)", re.IGNORECASE | re.MULTILINE),
     "skills": re.compile(r"^\s*(technical\s+)?skills\b", re.IGNORECASE | re.MULTILINE),
 }
 
@@ -63,10 +66,17 @@ def audit_resume(profile: CandidateProfile, raw_text: str) -> AtsReport:
     missing = [n for n in ("education", "skills") if n not in found]
     if not has_work:
         missing.insert(0, "experience/projects")
-    rule("sections", "Standard section headings", not missing, 15,
-         "Experience/Projects, Education and Skills headings found." if not missing
-         else f"Missing or unrecognised headings: {', '.join(missing)}. Use standard names "
-              "so the ATS can sort your content.")
+    # Say WHY a heading counts as missing: when the content itself was read (e.g. degrees in an
+    # untitled table), "missing education" reads as "your education is lost", which is wrong.
+    read_anyway = [n for n, has in (("education", bool(profile.education)), ("skills", bool(profile.skills)))
+                   if n in missing and has]
+    detail = ("Experience/Projects, Education and Skills headings found." if not missing
+              else f"Missing or unrecognised headings: {', '.join(missing)}. Use standard names "
+                   "so the ATS can sort your content.")
+    if read_anyway:
+        detail += (f" Your {' and '.join(read_anyway)} details were read, but some ATS software "
+                   f"files content by heading: add a clear title such as \"{read_anyway[0].upper()}\" above it.")
+    rule("sections", "Standard section headings", not missing, 15, detail)
 
     rule("length", "Resume length", 250 <= words <= 1000, 10,
          f"{words} words." + ("" if 250 <= words <= 1000 else
