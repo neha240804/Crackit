@@ -40,7 +40,8 @@ interviewer, not a chatbot reading predefined questions:
 - Time-boxed, resumable after a refresh, and ends with a **scored feedback report**
   (per question + communication metrics).
 - **Free to run**: Groq free tier for LLM + Whisper, on **each user's own key** (bring-your-own-key
-  only: no server key, no free allowance); voice generated locally with Kokoro.
+  only: no server key, no free allowance); the interviewer's voice is Groq Orpheus on the
+  same key, with local Kokoro as the fallback.
 - **No numerical questions anywhere**: nothing that needs a calculation (bank, interviewer,
   switch, prep). Ask for the reasoning behind it instead.
 - Built as a learning project: keep code readable and explain *why* in comments.
@@ -54,7 +55,7 @@ interviewer, not a chatbot reading predefined questions:
 | Agent | LangGraph graph with `interrupt()` + **Postgres checkpointer** (`langgraph-checkpoint-postgres`, psycopg) |
 | LLM | Groq `openai/gpt-oss-20b` (interviewer, plan: "fast") / `gpt-oss-120b` (resume parsing, report: "strong"), strict JSON-schema output, each falls back to the other |
 | Speech-to-text | Groq `whisper-large-v3-turbo` |
-| Text-to-speech | **Kokoro-82M via `kokoro-onnx`**, local CPU, full fp32 model (int8 measured ~5x slower here) |
+| Text-to-speech | **Groq `canopylabs/orpheus-v1-english`** on the user's key (Maya = diana, Arjun = troy, Sara = hannah); fallback **Kokoro-82M via `kokoro-onnx`**, local CPU, full fp32 model (int8 measured ~5x slower here) |
 | RAG | Qdrant + FastEmbed (`BAAI/bge-small-en-v1.5`, 384-dim): question banks + rubrics in `knowledge_base/`, resume chunks |
 | Tracing | LangSmith (env vars in `.env`, project `mock-interview-ai`) |
 
@@ -147,7 +148,7 @@ build_report(): separate function, called after the interview
 | `backend/app/agents/interview/runtime.py` | psycopg pool + `AsyncPostgresSaver` + compiled graph (FastAPI lifespan) |
 | `backend/app/services/interview_service.py` | start / begin / transcribe / answer / end / report / history; error mapping and stuck-state recovery |
 | `backend/app/services/stt.py` | Whisper (vocab prompt, silence-hallucination guard) |
-| `backend/app/services/tts.py` | Kokoro: `speech_chunks()`, in-flight dedupe, cache, `presynthesize()` |
+| `backend/app/services/tts.py` | Voice: Groq Orpheus first (`_groq_speech`, one request per line), Kokoro fallback per interview (`_groq_off`), `speech_chunks()`, in-flight dedupe, cache, `presynthesize()` |
 | `backend/app/services/speech_metrics.py` | WPM, filler words (computed in code, not by the LLM) |
 | `backend/app/schemas/interview.py` | API + LLM schemas, `PERSONAS` (maya / arjun / sara) |
 | `backend/app/agents/profile/graph.py`, `sources.py` | Resume parsing graph; resume → numbered sources for the interviewer |
@@ -187,7 +188,18 @@ build_report(): separate function, called after the interview
   if the candidate stays silent, `/answer` gets text directly (Whisper is off the waiting path).
 - **Live captions:** browser SpeechRecognition (Chrome/Edge), rebuilt from the full result list
   each event (no duplicated words); captions count as activity only near real speech.
-- **Speech output:** the server splits lines **only at sentence/clause boundaries**
+- **Two voice engines (Nov 2026):** server-side Kokoro voiced only ~1 interview at a time
+  without gaps (load test, `docs/DEPLOYMENT.md` > Capacity; 4-core VM: ~6 s wait even for
+  one). So `settings.tts_engine = "groq"`: each line is ONE Groq Orpheus request on the
+  user's key (~2-2.5 s for a 10-14 s line; a reply presynthesized while the answer response
+  travels was ready in 0.3 s). Free tier: 100 voice requests/day/key (~6 ten-minute
+  interviews), ~1,200 chars/min; per sentence would cost 3x the requests. Each Groq account
+  must accept the Orpheus terms once (Settings links it). On a refusal (`model_terms_required`,
+  429, bad key) that interview falls back to Kokoro for 15-60 min (`_groq_off`), so no line pays
+  a failed round trip twice. Groq streams WAV: the header length is a placeholder, so
+  `read_wav()` reads every frame. `/tts` sends `X-Voice-Engine` (groq / kokoro;fallback=why);
+  the browser sends `X-Groq-Key` with voice requests. Tests: `tests/test_tts_voice.py`.
+- **Speech output:** the server splits Kokoro lines **only at sentence/clause boundaries**
   (`speech_chunks`) and starts generating immediately (`presynthesize`); a newer line in the
   same interview cancels the stale backlog. The browser schedules chunks on one Web Audio
   timeline and starts only when `canStartGapless()` predicts no stall (≤ 0.15 s extra wait

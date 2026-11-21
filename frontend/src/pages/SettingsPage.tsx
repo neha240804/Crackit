@@ -13,11 +13,15 @@ import { useAuth } from '@/features/auth/context'
 import { cn, formatDate } from '@/lib/utils'
 
 const GROQ_KEYS_URL = 'https://console.groq.com/keys'
+const VOICE_TERMS_URL = 'https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english'
 
 const STEPS = [
   <>Open <a href={GROQ_KEYS_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-700 underline underline-offset-2">console.groq.com/keys</a> and sign in. It's free, and no card is needed.</>,
   <>Select <span className="font-medium text-ink-900">Create API Key</span>, give it any name (for example "Crackit"), and copy it.</>,
   <>Paste it below and save. Crackit checks it with Groq, then keeps it in this browser only.</>,
+  // The interviewer's voice runs on Groq too (Orpheus), which needs a one-time terms
+  // acceptance per Groq account. Without it Crackit uses its own server voice instead.
+  <>For the most natural interviewer voice, open the <a href={VOICE_TERMS_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-700 underline underline-offset-2">Orpheus voice model</a> in the Groq console and accept its terms once. Skip this and Crackit uses its own voice.</>,
 ]
 
 const PROTECTION = [

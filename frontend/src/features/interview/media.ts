@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react'
 
+import { activeGroqKey } from '@/features/account/groqKey'
 import { tokenStore } from '@/lib/api'
 import type { InterviewerId } from '@/lib/types'
 
@@ -152,15 +153,21 @@ export function speechChunks(text: string, max = 140): string[] {
   return chunks
 }
 
-// --- server voice (local Kokoro-82M): natural; disabled for the session after the first 503
+// --- server voice (Groq Orpheus on the user's key, or local Kokoro): natural; disabled for
+// the session after the first 503
 let serverVoice: 'unknown' | 'on' | 'off' = 'unknown'
 let serverVoiceReason = ''
 
 async function fetchSpeech(text: string, interviewer: InterviewerId, signal: AbortSignal) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenStore.get() ?? ''}` }
+  // The voice is generated on Groq with the user's own key (bring-your-own-key). Usually the
+  // server already started it with the key from the answer request; this covers the rest.
+  const groqKey = activeGroqKey()
+  if (groqKey) headers['X-Groq-Key'] = groqKey
   const res = await fetch('/api/v1/interviews/tts', {
     method: 'POST',
     signal,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenStore.get() ?? ''}` },
+    headers,
     body: JSON.stringify({ text, interviewer }),
   })
   if (res.status === 503) {

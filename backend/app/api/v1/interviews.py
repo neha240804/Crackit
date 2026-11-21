@@ -31,10 +31,13 @@ class TTSRequest(BaseModel):
 @router.post("/tts", responses={200: {"content": {"audio/wav": {}}}, 503: {}},
              dependencies=[per_user("tts", times=120, seconds=60)])
 async def text_to_speech(body: TTSRequest, user: CurrentUser) -> Response:
-    """Natural interviewer voice (local Kokoro). 503 = use the browser voice instead.
+    """Natural interviewer voice: Groq Orpheus on the user's key, or local Kokoro (see
+    services/tts.py). 503 = use the browser voice instead.
 
-    X-Gen-Per-Audio: the server's measured generation speed (seconds of work per second of
-    audio). The browser uses it to decide when playback can start without stalling."""
+    X-Gen-Per-Audio: local Kokoro's measured generation speed (seconds of work per second of
+    audio). The browser uses it to decide when playback can start without stalling (Groq
+    lines are one chunk, so it only matters for Kokoro's sentence chunks).
+    X-Voice-Engine: "groq", "kokoro" or "kokoro;fallback=<why Groq was skipped>"."""
     try:
         audio = await tts.synthesize(body.text, body.interviewer)
     except tts.TTSUnavailable as exc:
@@ -44,6 +47,7 @@ async def text_to_speech(body: TTSRequest, user: CurrentUser) -> Response:
     return Response(audio, media_type="audio/wav", headers={
         "Cache-Control": "private, no-store",
         "X-Gen-Per-Audio": str(tts.gen_per_audio()),
+        "X-Voice-Engine": tts.engine_used(body.text, body.interviewer),
     })
 
 

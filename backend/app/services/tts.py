@@ -1,18 +1,28 @@
-"""Interviewer voice: Kokoro-82M, a small open-source neural TTS model (Apache-2.0),
-run locally through ONNX Runtime. Free, private (text never leaves the machine), and
-fast enough on a laptop CPU.
+"""Interviewer voice: Groq Orpheus on the user's own key, with local Kokoro as the fallback.
 
-- The model loads once in the background at startup (see main.py lifespan).
-- Synthesis is CPU-heavy, so it runs in a worker thread: the async server stays responsive.
-- If the model files are missing or still loading, TTSUnavailable makes the API return
-  503 and the browser falls back to its built-in voice.
+Why two engines (load test, Nov 2026, docs/DEPLOYMENT.md "Capacity"): local Kokoro runs on the
+server CPU, one chunk at a time for everyone, so only ~1 interview at a time could speak
+without gaps (4-core VM: even one waited ~6 s). Groq's Orpheus (settings.tts_engine = "groq")
+generates on Groq with the user's own key (bring-your-own-key), so capacity no longer depends
+on the server: a 10 s line came back in ~2.3 s, three at once in 3.2 s.
 
-Model files (git-ignored) go in data/models/kokoro/, from
+- Groq: ONE request per interviewer line (presynthesize returns the whole line as a single
+  chunk). The free tier allows 100 voice requests a day per key; per line that's ~6
+  ten-minute interviews a day, per sentence it would be ~2.
+- Kokoro (Kokoro-82M, open source, Apache-2.0, ONNX Runtime): used when the engine is
+  "kokoro", when the request has no key, or for the rest of an interview once Groq refused
+  (terms not accepted on the user's Groq account, daily limit reached, key rejected). Lines
+  are split into sentences so speaking can start before the whole line is generated.
+- Kokoro loads once in the background at startup (main.py lifespan) and runs in a worker
+  thread. If it is missing or still loading, TTSUnavailable -> 503 -> the browser voice.
+
+Kokoro model files (git-ignored) go in data/models/kokoro/, from
 https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1
 """
 
 import asyncio
 import io
+import logging
 import re
 import threading
 import time
@@ -22,18 +32,27 @@ from collections import OrderedDict
 import numpy as np
 
 from app.core.config import DATA_DIR, settings
+from app.core.groq_key import current_groq_key, has_user_key
+from app.core.http import groq_http_client
+
+logger = logging.getLogger(__name__)
 
 MODEL_DIR = DATA_DIR / "models" / "kokoro"
 MAX_CHARS = 600
 
 # Persona -> Kokoro voice (American / British English neural voices).
 VOICES = {"maya": "af_heart", "sara": "bf_emma", "arjun": "am_michael"}
+# Persona -> Groq Orpheus voice (chosen by listening to samples, Nov 2026).
+GROQ_VOICES = {"maya": "diana", "arjun": "troy", "sara": "hannah"}
+GROQ_SPEECH_URL = "https://api.groq.com/openai/v1/audio/speech"
+GROQ_TIMEOUT_S = 15  # a full line usually takes ~2-3 s; past this Kokoro is the better bet
 
 _model = None
 _load_error: str | None = None
 _lock = threading.Lock()  # one synthesis at a time: parallel runs only fight over the CPU
-_cache: OrderedDict[tuple[str, str], bytes] = OrderedDict()
+_cache: OrderedDict[tuple[str, str], bytes] = OrderedDict()  # (interviewer, text) -> WAV
 _CACHE_SIZE = 64
+_engine_used: OrderedDict[tuple[str, str], str] = OrderedDict()  # for the X-Voice-Engine header
 
 
 class TTSUnavailable(Exception):
@@ -44,22 +63,53 @@ class NotAllowed(Exception):
     """The text isn't an interviewer line this server produced."""
 
 
+class GroqVoiceError(Exception):
+    """Groq refused or failed a voice request. `reason` says for how long to stop trying."""
+
+    def __init__(self, reason: str, detail: str = "", retry_after: float | None = None):
+        super().__init__(f"{reason}: {detail}")
+        self.reason, self.retry_after = reason, retry_after
+
+
 # Only lines the interviewer actually said may be voiced (audit C2). /tts used to accept any
 # text from any logged-in user: a script could keep the single-file generator busy with
 # arbitrary text and stall every interview's voice. Every chunk handed to the browser goes
 # through presynthesize(), which registers it here; /tts refuses anything else. Bounded LRU:
 # lines expire once ~2,000 newer ones were spoken (far more than any interview in progress).
-_allowed: OrderedDict[str, None] = OrderedDict()
+# Value: (stream, engine): the interview the line belongs to and the engine chosen for it.
+_allowed: OrderedDict[str, tuple[str, str]] = OrderedDict()
 _ALLOWED_SIZE = 2000
 
 
-def allow(chunks: list[str]) -> None:
+def allow(chunks: list[str], stream: str = "default", engine: str = "kokoro") -> None:
     for chunk in chunks:
         key = normalize_for_speech(chunk)
-        _allowed[key] = None
+        _allowed[key] = (stream, engine)
         _allowed.move_to_end(key)
     while len(_allowed) > _ALLOWED_SIZE:
         _allowed.popitem(last=False)
+
+
+# Per interview (stream): Groq voice switched off until this time, and why. A Groq refusal
+# (terms not accepted on the user's account, the daily limit, a rejected key) would repeat on
+# every line, each costing a round trip before falling back, so the rest of that interview
+# uses Kokoro straight away. Short outages only pause it briefly.
+_groq_off: dict[str, tuple[float, str]] = {}
+GROQ_OFF_SECONDS = {"terms": 3600, "auth": 3600, "rate_limit": 900, "error": 60}
+
+
+def groq_voice_usable(stream: str) -> bool:
+    if settings.tts_engine != "groq" or not has_user_key():
+        return False
+    until, _ = _groq_off.get(stream, (0.0, ""))
+    return time.time() >= until
+
+
+def _groq_failed(stream: str, err: GroqVoiceError) -> None:
+    seconds = err.retry_after or GROQ_OFF_SECONDS.get(err.reason, 60)
+    _groq_off[stream] = (time.time() + seconds, err.reason)
+    # Never log the key; the reason and Groq's own message are enough to act on.
+    logger.warning("Groq voice off for %.0f s in stream %s: %s", seconds, stream, err)
 
 
 def is_allowed(text: str) -> bool:
@@ -145,6 +195,49 @@ def _synthesize_sync(text: str, voice: str) -> bytes:
     return to_wav(trim_silence(samples, sample_rate, pause_after(text)), sample_rate)
 
 
+def read_wav(data: bytes) -> tuple[np.ndarray, int]:
+    """16-bit PCM WAV -> float samples. Groq streams its WAV, so the header's frame count is a
+    placeholder (it reported 89,478 s for a 4 s clip): read every frame that is there."""
+    with wave.open(io.BytesIO(data)) as w:
+        rate, channels, width = w.getframerate(), w.getnchannels(), w.getsampwidth()
+        frames = w.readframes(2**31 - 1)
+    if width != 2:
+        raise GroqVoiceError("error", f"unexpected sample width {width}")
+    samples = np.frombuffer(frames[: len(frames) - len(frames) % (2 * channels)], dtype="<i2")
+    samples = samples.reshape(-1, channels).mean(axis=1) if channels > 1 else samples
+    return samples.astype(np.float32) / 32768.0, rate
+
+
+async def _groq_speech(text: str, interviewer: str) -> bytes:
+    """One interviewer line from Groq Orpheus, on the user's own key."""
+    try:
+        response = await groq_http_client().post(
+            GROQ_SPEECH_URL, timeout=GROQ_TIMEOUT_S,
+            headers={"Authorization": f"Bearer {current_groq_key()}"},
+            json={"model": settings.groq_tts_model, "voice": GROQ_VOICES.get(interviewer, "diana"),
+                  "input": text[:MAX_CHARS], "response_format": "wav"},
+        )
+    except Exception as exc:
+        raise GroqVoiceError("error", exc.__class__.__name__) from exc
+    if response.status_code != 200:
+        try:
+            error = response.json().get("error", {})
+        except ValueError:
+            error = {}
+        code, message = error.get("code", ""), str(error.get("message", ""))[:200]
+        if code == "model_terms_required":
+            raise GroqVoiceError("terms", message)
+        if response.status_code == 429:
+            retry = response.headers.get("retry-after")
+            raise GroqVoiceError("rate_limit", message,
+                                 float(retry) if retry and retry.replace(".", "").isdigit() else None)
+        if response.status_code in (401, 403):
+            raise GroqVoiceError("auth", message)
+        raise GroqVoiceError("error", f"HTTP {response.status_code} {message}")
+    samples, rate = read_wav(response.content)
+    return to_wav(trim_silence(samples, rate, pause_after(text)), rate)
+
+
 def to_wav(samples: np.ndarray, sample_rate: int) -> bytes:
     """Float samples in [-1, 1] -> 16-bit mono WAV bytes (standard library only)."""
     pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2")
@@ -219,21 +312,51 @@ def _remember(key: tuple[str, str], task: asyncio.Task) -> None:
         _cache.popitem(last=False)
 
 
-async def synthesize(text: str, interviewer: str) -> bytes:
-    """Return WAV audio for `text`, or raise TTSUnavailable / NotAllowed."""
-    if not is_allowed(text):
-        raise NotAllowed("Only interviewer lines can be voiced")
+async def _generate(text: str, interviewer: str, stream: str, engine: str) -> bytes:
+    """Groq first when this line was planned for it, else (or when Groq refuses) Kokoro."""
+    key = (interviewer, text)
+    if engine == "groq" and groq_voice_usable(stream):
+        try:
+            audio = await _groq_speech(text, interviewer)
+            _note_engine(key, "groq")
+            return audio
+        except GroqVoiceError as err:
+            _groq_failed(stream, err)
     if _model is None:
         raise TTSUnavailable(_load_error or "Voice model is still loading")
+    audio = await asyncio.to_thread(_synthesize_sync, text[:MAX_CHARS], VOICES.get(interviewer, "af_heart"))
+    reason = _groq_off.get(stream, (0, ""))[1] if engine == "groq" else ""
+    _note_engine(key, f"kokoro;fallback={reason}" if reason else "kokoro")
+    return audio
+
+
+def _note_engine(key: tuple[str, str], engine: str) -> None:
+    _engine_used[key] = engine
+    if len(_engine_used) > _CACHE_SIZE * 4:
+        _engine_used.popitem(last=False)
+
+
+def engine_used(text: str, interviewer: str) -> str:
+    """Which engine voiced this line (sent as X-Voice-Engine, for debugging)."""
+    return _engine_used.get((interviewer, normalize_for_speech(text)), "")
+
+
+async def synthesize(text: str, interviewer: str) -> bytes:
+    """Return WAV audio for `text`, or raise TTSUnavailable / NotAllowed."""
     text = normalize_for_speech(text)
-    voice = VOICES.get(interviewer, "af_heart")
-    key = (voice, text)
+    plan = _allowed.get(text)
+    if plan is None:
+        raise NotAllowed("Only interviewer lines can be voiced")
+    stream, engine = plan
+    if engine != "groq" and _model is None:
+        raise TTSUnavailable(_load_error or "Voice model is still loading")
+    key = (interviewer, text)
     if key in _cache:
         _cache.move_to_end(key)
         return _cache[key]
     task = _inflight.get(key)
     if task is None:
-        task = asyncio.create_task(asyncio.to_thread(_synthesize_sync, text[:MAX_CHARS], voice))
+        task = asyncio.create_task(_generate(text, interviewer, stream, engine))
         _inflight[key] = task
         task.add_done_callback(lambda t, k=key: _remember(k, t))
     # shield: if this HTTP request is cancelled, the generation still finishes for the cache
@@ -251,10 +374,18 @@ def presynthesize(text: str, interviewer: str, stream: str = "default") -> list[
     A newer line on the same `stream` (interview) stops the older one: speech nobody will
     hear (the candidate skipped it or answered early) must not delay the next reply. The
     generator is single-file, so in testing a stale backlog pushed first audio to ~10 s.
+
+    Groq: the whole line is ONE chunk (one request: the free tier allows 100 a day). Kokoro:
+    sentence chunks, so speaking can start before the whole line is generated. Must be
+    called inside the request (the background task inherits the request's Groq key).
     """
-    chunks = speech_chunks(text)
-    allow(chunks)  # register first: the browser may request these even while the model loads
-    if _model is None or not chunks:
+    engine = "groq" if groq_voice_usable(stream) else "kokoro"
+    line = normalize_for_speech(text)
+    chunks = [line] if engine == "groq" and 0 < len(line) <= MAX_CHARS else speech_chunks(text)
+    if engine == "groq" and len(chunks) > 1:
+        engine = "kokoro"  # a very long line: sentence chunks on Kokoro
+    allow(chunks, stream, engine)  # register first: the browser may ask while the model loads
+    if (engine == "kokoro" and _model is None) or not chunks:
         return chunks
     _latest_line[stream] = text
 
