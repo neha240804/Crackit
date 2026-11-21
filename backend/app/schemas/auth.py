@@ -54,3 +54,4 @@ class UserOut(BaseModel):
     id: uuid.UUID
     email: EmailStr
     name: str
+    is_admin: bool = False  # site owner (ADMIN_EMAILS): the app shows the Quality page

@@ -17,6 +17,7 @@ from app.agents.profile.sources import build_sources, format_sources
 from app.core.config import settings
 from app.db.models import InterviewSession, InterviewTurn, JobDescription, Resume, User
 from app.db.session import release_connection
+from app.quality import service as quality
 from app.schemas.interview import (
     PERSONAS,
     InterviewConfig,
@@ -296,6 +297,9 @@ async def report(db: AsyncSession, user: User, session_id: uuid.UUID) -> dict:
         ))
     session.report = result
     await db.commit()
+    # Online evaluation: check this real interview in code, and sometimes with an AI judge
+    # on the site owner's key (app/quality/). Never fails or slows the report noticeably.
+    await quality.record(db, session.id, values, result)
     return result
 
 

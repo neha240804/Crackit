@@ -86,6 +86,14 @@ communication score and mention them concretely. Give one QuestionFeedback per i
 question that the candidate answered (question_index = its number in the transcript). \
 Make strengths, improvements and next steps specific to this conversation, not generic.
 
+ONLY CLAIM WHAT YOU HAVE EVIDENCE FOR. You read a transcript; you cannot hear the candidate. \
+Never comment on tone, voice, confidence, calmness, warmth, politeness, enthusiasm or \
+manner: none of that is in your input. Pace, filler words and answer length come ONLY from the \
+measured metrics above. Every strength must be something the candidate actually said or did \
+well, traceable to their words (or to a metric); never a weakness, never an attempt that \
+went nowhere. If an answer has nothing good in it, give it NO strengths (an empty list) \
+rather than inventing one, and keep the report's overall strengths to what was really there.
+
 RUBRICS:
 {rubrics}"""
 

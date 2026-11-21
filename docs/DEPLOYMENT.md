@@ -3,10 +3,10 @@
 One small server runs everything with Docker Compose (`docker-compose.prod.yml`):
 
 ```
-visitor ──HTTPS──► web (Caddy: certificate, React app, /api proxy) ──► backend (FastAPI, Kokoro voice)
+visitor ──HTTPS──► web (Caddy: certificate, React app, /api proxy) ──► backend (FastAPI + LangGraph)  
                                                                          ├──► postgres  (no public port)
                                                                          └──► qdrant    (no public port)
-                   backup: pg_dump every 24 h into ./backups, newest 7 kept
+                   backup: database + uploaded resumes every 24 h into ./backups, newest 7 kept
 ```
 
 Cost: **₹0**. The VM is Oracle's Always Free Ampere A1 (ARM64, up to 4 cores and 24 GB RAM), the
@@ -14,7 +14,7 @@ domain can be a free DuckDNS subdomain, HTTPS is a free Let's Encrypt certificat
 gets and renews by itself, and the AI runs on the Groq free tier (plus each user's own key).
 
 Contents: [1. Create the VM](#1-create-the-vm) · [2. Open ports 80 and 443](#2-open-ports-80-and-443) ·
-[3. Install Docker](#3-install-docker) · [4. Get the code and the voice model](#4-get-the-code-and-the-voice-model) ·
+[3. Install Docker](#3-install-docker) · [4. Get the code](#4-get-the-code) ·
 [5. Domain](#5-domain) · [6. Configure .env](#6-configure-env) · [7. Start](#7-start) ·
 [8. Monitoring](#8-monitoring) · [9. Backups and restore](#9-backups-and-restore) ·
 [10. Updating](#10-updating) · [Troubleshooting](#troubleshooting)
@@ -80,32 +80,30 @@ exit                                                 # log out and back in for t
 
 Check: `docker compose version`.
 
-## 4. Get the code and the voice model
+## 4. Get the code
 
-**Code.** Push the repository to a *private* GitHub repo from your laptop, then on the server:
+**Code.** The repository is on GitHub (private). On the server:
 
 ```bash
 git clone https://github.com/<you>/<repo>.git crackit && cd crackit
 ```
 
-(Without GitHub: `scp -r` the project folder, skipping `node_modules`, `.venv` and `data`.)
+`main` is what you deploy. (A private repo asks for your GitHub username and a personal
+access token with `repo` read access as the password; or add the server's SSH key to GitHub.)
 
-**Voice model** (git-ignored, ~400 MB). Copy the two Kokoro files you already use locally:
-
-```bash
-# on your laptop (PowerShell), from the repo root
-scp data/models/kokoro/kokoro-v1.0.onnx data/models/kokoro/voices-v1.0.bin ubuntu@<public-ip>:~/crackit/data/models/kokoro/
-```
-
-Create the folder first on the server (`mkdir -p ~/crackit/data/models/kokoro`). The FastEmbed
-embedding model downloads itself into `data/models` on first start.
-
-**Permissions.** The API runs as an unprivileged user (uid 10001) and writes uploads and
-model caches into `data/`:
+**Data folders and permissions.** The API runs as an unprivileged user (uid 10001) and writes
+uploads and model caches into `data/`; the backup container reads `data/uploads`. Create them
+before the first start (otherwise Docker creates them owned by root and uploads fail):
 
 ```bash
-sudo chown -R 10001:10001 ~/crackit/data
+mkdir -p data/uploads data/exports data/models backups
+sudo chown -R 10001:10001 data
 ```
+
+**No voice model is needed.** The interviewer speaks with each student's own browser voice
+(`TTS_ENGINE=browser`, the default). Only if you switch to `TTS_ENGINE=kokoro` do you copy
+the two Kokoro files (~400 MB) into `data/models/kokoro/` (see *Capacity* for why that's not
+the default). The FastEmbed embedding model downloads itself into `data/models` on first start.
 
 ## 5. Domain
 
@@ -136,6 +134,8 @@ Set (the API refuses to start in production with development defaults):
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | your email provider's SMTP details (see *Password-reset email* below) |
 | `CONTACT_EMAIL` | the address shown on `/privacy` for questions about data |
 | `SENTRY_DSN` | optional: error alerts (see *Monitoring*) |
+| `ADMIN_EMAILS` | your own sign-up email: that account gets the **Quality** page (`/admin/quality`, AI quality of real interviews). Comma-separated for more than one |
+| `ONLINE_EVAL_GROQ_KEY` | optional: **your own** Groq key for the online evaluation's AI judge (see *Monitoring*). Never used for students' features |
 
 **Password-reset email.** Any provider with SMTP works; most have a free tier big enough for
 this (for example Brevo, Mailjet or Resend). Create an account, verify the sending domain or
@@ -178,19 +178,28 @@ Tip: `alias dcp='docker compose -f docker-compose.prod.yml'` in `~/.bashrc` save
   in an interview, a failing report) then arrive by email. Privacy: `core/monitoring.py` sends
   only the error and its stack trace: no request bodies, headers (no Groq keys), local variables
   or user data. The privacy notice says so; keep them in step.
+- **AI quality (online evaluation):** every finished interview is checked in code (coaching
+  rules, repeats, report completeness, report vs interviewer agreement, reply time); with
+  `ONLINE_EVAL_GROQ_KEY` set, a quarter of them (max 25 a day) are also read by an AI judge on
+  your key. See the results on the **Quality** page in the app (top bar, only for the accounts in
+  `ADMIN_EMAILS`), or in a terminal:
+  `dcp exec backend python -m app.quality.summary --days 7` (exit code 1 = a check is below
+  target). Details and what to do with a failing check: `docs/EVALS.md`, *Online evaluation*.
 - **Logs:** `dcp logs --tail 200 backend`. Docker keeps at most 5 × 10 MB per container.
 - **Disk:** `df -h /` now and then; backups and Docker images are the growing parts
   (`docker image prune -f` after updates).
 
 ## 9. Backups and restore
 
-The `backup` container writes `./backups/crackit-<UTC time>.dump` once at start and then every
-24 hours, keeping the newest 7. Check: `ls -lh backups/` and `dcp logs backup`.
+The `backup` container writes two files once at start and then every 24 hours, keeping the
+newest 7 of each:
 
-They contain everything in Postgres: accounts, interviews and reports, parsed resumes, prep
-stars and sets, and paused-interview checkpoints. Not included: uploaded resume files
-(`data/uploads`) and Qdrant (the question bank is rebuilt at every start; resume vectors are
-rebuilt by re-parsing a resume).
+- `./backups/crackit-<UTC time>.dump`: everything in Postgres: accounts, interviews and
+  reports, parsed resumes, prep stars and sets, and paused-interview checkpoints.
+- `./backups/crackit-<UTC time>-uploads.tgz`: the uploaded resume files (`data/uploads`).
+
+Check: `ls -lh backups/` and `dcp logs backup`. Not included: Qdrant (the question bank is
+rebuilt at every start; resume vectors are rebuilt by re-parsing a resume).
 
 **Off-site copy.** Backups on the same VM don't survive losing the VM. Simplest: pull them to
 your laptop regularly:
@@ -207,6 +216,8 @@ scp -r ubuntu@<public-ip>:~/crackit/backups ./crackit-backups
 dcp stop backend backup
 docker compose -f docker-compose.prod.yml exec -T postgres \
   pg_restore --clean --if-exists -U mockinterview -d mockinterview < backups/crackit-<time>.dump
+sudo tar -xzf backups/crackit-<time>-uploads.tgz -C data/uploads
+sudo chown -R 10001:10001 data/uploads
 dcp start backend backup
 ```
 
@@ -296,8 +307,8 @@ docker exec crackit-backend-1 python /tmp/load_test_voice.py --interviews 1 2 4
 Conclusion: server-side voice does not scale to many simultaneous users on this hardware.
 
 **What Crackit does about it (Nov 2026):** the interviewer's voice is generated by Groq's
-Orpheus model on each user's own key (`TTS_ENGINE=groq`, the default), one request per line:
-a 10-14 s line took ~2-2.5 s, three at once 3.2 s, and none of it uses the server CPU. Kokoro
+Orpheus model on each user's own key (`TTS_ENGINE=groq`, tried as the default before the browser voice), one request per line:
+a 10-14 s line took ~2-2.5 s, three at once 3.2 s, and none of it uses the server CPU (no longer the default: see the decision below). Kokoro
 stays as the fallback for an interview whose user hasn't accepted the Orpheus terms on their
 Groq account or has used up the day's voice quota, so the load test above still describes
 how many of THOSE interviews the server can voice at once. `TTS_ENGINE=kokoro` switches Groq
@@ -338,6 +349,7 @@ build); to try it again on other devices, rebuild it from these notes.
 | `web` logs: certificate errors | DNS doesn't point at the VM yet, or port 80 is blocked. Fix it and `dcp restart web`. |
 | Backend restarts with "Unsafe production settings" | `.env` still has a development value; the message names it. |
 | Backend: `PermissionError` under `/srv/data` | Run `sudo chown -R 10001:10001 data` (step 4). |
-| Interviewer uses the browser voice | Kokoro files missing or misnamed in `data/models/kokoro/` (`dcp logs backend \| grep -i kokoro`). |
+| Interviewer's voice sounds robotic | It is the student's browser voice (`TTS_ENGINE=browser`). Edge's "Natural" voices sound best; Chrome on Windows has fewer good voices. |
+| Microphone doesn't work | The site must be opened over HTTPS (browsers block the mic on plain HTTP). |
 | "Too many requests" for everyone at once | The per-IP limits see one IP: the API must run behind Caddy with `--proxy-headers` (it does in the image); don't publish port 8001 directly. |
 | Out of disk | `docker system prune`, and check `backups/`. |

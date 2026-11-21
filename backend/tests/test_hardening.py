@@ -55,6 +55,7 @@ def test_production_accepts_safe_settings():
     ({"postgres_password": "mockinterview"}, "POSTGRES_PASSWORD"),
     ({"cors_origins": "http://localhost:5174"}, "CORS_ORIGINS"),
     ({"cors_origins": "*"}, "CORS_ORIGINS"),
+    ({"smtp_host": "smtp.example.com"}, "APP_URL"),  # reset links would point to localhost
 ])
 def test_production_refuses_unsafe_settings(override, message):
     with pytest.raises(ValidationError, match=message):

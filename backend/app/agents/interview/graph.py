@@ -286,6 +286,7 @@ def turn_transcript(messages: list[dict]) -> str:
 
 
 async def interviewer_node(state: InterviewState) -> dict:
+    started = time.perf_counter()  # stored on the turn: online evaluation tracks reply latency
     cfg = state["config"]
     persona = _persona(state)
     plan = state["plan"]
@@ -371,7 +372,8 @@ async def interviewer_node(state: InterviewState) -> dict:
     spoken =f"{turn.reaction.strip()} {turn.question.strip()}".strip()
     msg = {"role": "interviewer", "text": spoken,
            "kind": "question" if turn.next_move == "new_topic" else "follow_up",
-           "focus_area": turn.focus_area, "next_move": turn.next_move}
+           "focus_area": turn.focus_area, "next_move": turn.next_move,
+           "latency_ms": round((time.perf_counter() - started) * 1000)}
     # Store the assessment on the candidate's answer: useful context for the final report.
     messages = [*state["messages"]]
     messages[-1] = {**messages[-1], "assessment": turn.assessment}
@@ -428,7 +430,8 @@ async def build_report(state: InterviewState) -> dict:
     numbered = [line for i, (q, a) in enumerate(pairs, 1)
                 for line in (f"Q{i} ({q['kind']}): {q['text']}", f"A{i}: {a['text']}")]
     cfg = state["config"]
-    llm = get_structured_llm(InterviewReport, tier="strong", reasoning_effort="medium")
+    # Temperature 0: the same transcript should get (nearly) the same report.
+    llm = get_structured_llm(InterviewReport, tier="strong", reasoning_effort="medium", temperature=0)
     report: InterviewReport = await llm.ainvoke([
         SystemMessage(REPORT_PROMPT.format(rubrics=get_rubrics())),
         HumanMessage(
@@ -443,7 +446,48 @@ async def build_report(state: InterviewState) -> dict:
     questions = [{**by_index[i].model_dump(), "question": pairs[i - 1][0]["text"],
                   "answer": pairs[i - 1][1]["text"], "metrics": metrics["per_answer"][i - 1]}
                  for i in sorted(by_index)]
-    return {**report.model_dump(), "questions": questions, "metrics": metrics}
+    for q in questions:
+        q["strengths"] = drop_unhearable(q["strengths"])
+    out = {**report.model_dump(), "questions": questions, "metrics": metrics}
+    out["strengths"] = drop_unhearable(out["strengths"])
+    out["summary"] = " ".join(drop_unhearable(re.split(r"(?<=[.!?])\s+", out["summary"]))) or out["summary"]
+    return {**out, **scores_from_questions(out)}
+
+
+# Words about how someone SOUNDS or comes across. The report only receives text (plus measured
+# pace and filler counts), yet the report eval found it praising "a calm tone", "a friendly
+# demeanor", "a polite and professional tone" (5 of 13 unsupported claims). The prompt now
+# forbids it; this removes any that still slip through (rules in code back the prompt).
+# Precise on purpose: "explained the energy losses" or "an example of staying calm under
+# pressure" (an HR story the candidate told) are real strengths and must stay. So: words that
+# can only be about delivery, or a manner word tied to how they SPOKE / CAME ACROSS.
+_MANNER = r"(confident\w*|calm\w*|friendly|polite\w*|warm\w*|enthusias\w*|energetic|composed|nervous\w*|professional)"
+UNHEARABLE = re.compile(
+    r"\b(tone|vocal|demeanou?r|body language|eye contact|smil(e|ed|es|ing)|poise|charisma\w*)\b"
+    rf"|\b(sound(s|ed)?|spoke|speaks|speaking|came across|comes across|delivery|delivered)\b[^.]{{0,30}}\b{_MANNER}\b"
+    rf"|\b{_MANNER} (voice|manner|attitude|presence|delivery)\b",
+    re.IGNORECASE)
+
+
+def drop_unhearable(claims: list[str]) -> list[str]:
+    return [c for c in claims if not UNHEARABLE.search(c)]
+
+
+# Overall and technical scores come from the per-question scores in code. The model used to
+# pick them separately, and the same transcript then scored 35 vs 22 and 64 vs 51 in two runs
+# (report eval): one number drifting on its own. Per-question scores are where the reasoning
+# is, and an average is steadier than any single guess.
+OVERALL_WEIGHTS = {"technical_score": 0.6, "communication_score": 0.2, "structure_score": 0.2}
+
+
+def scores_from_questions(report: dict) -> dict:
+    scores = [q["score"] for q in report["questions"]]
+    if not scores:
+        return {}
+    technical = round(10 * sum(scores) / len(scores))
+    parts = {**report, "technical_score": technical}
+    overall = round(sum(parts[k] * w for k, w in OVERALL_WEIGHTS.items()))
+    return {"technical_score": technical, "overall_score": max(0, min(100, overall))}
 
 
 def answered_pairs(messages: list[dict]) -> list[tuple[dict, dict]]:

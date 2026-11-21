@@ -82,7 +82,7 @@ End ─────────────── POST /{id}/end ─────
 Report page ─────── POST /{id}/report ─────────────► build_report (strong LLM + code metrics), cached
 ```
 
-### Database (10 tables)
+### Database (11 tables)
 
 `users`, `resumes` (parsed profile JSONB, `purpose` interview|ats, one primary per purpose), `job_descriptions`, `resume_versions`
 (optimized rewrite + analysis JSONB + DOCX path), `interview_sessions`
@@ -92,7 +92,8 @@ candidate's emoji rating 1-5 + optional comment, asked as the interview ends), `
 `prep_current_sets` (the Prep page's current study set incl. marks, JSONB, one per user) and
 `password_reset_tokens` (SHA-256 of a one-time reset link, 30 min; `users.password_changed_at`
 signs out every token issued before a reset) and `site_feedback` (the Feedback page: category
-bug/idea/interviewer/other, optional emoji rating, message; read it with SQL, no admin screen).
+bug/idea/interviewer/other, optional emoji rating, message; read it with SQL, no admin screen) and
+`interview_quality` (online evaluation of each finished interview: code checks + optional judge, cascades).
 No table stores a Groq API key (a test enforces it). `usage_counters` (the old daily
 allowance) was dropped in migration `b7c1d2e3f4a5`.
 LangGraph creates its own `checkpoint*` tables (Alembic ignores them).
@@ -299,6 +300,17 @@ Production gotchas:
   `evals/results/` (git-ignored); exit code 1 if a target is missed. The suites call the graph
   NODE functions directly (no checkpointer/DB), so keep them importable and side-effect free.
   Re-run the matching suite after changing a prompt, topic rules, the report or the bank.
+- **Online evaluation (`backend/app/quality/`, guide: `docs/EVALS.md` section 8):** after each
+  report, `quality.record()` checks the real interview in code (same `turn_checks` as the
+  behaviour suite, replayed from the saved messages; report completeness; report score vs the
+  live verdict; `latency_ms` stored on each interviewer turn) and stores it in `interview_quality`.
+  A sample also goes to the AI judge (same prompts as the evals) in a background task on the
+  SITE OWNER's key `ONLINE_EVAL_GROQ_KEY` (never a student's: it sets the key in the task's own
+  context). It must never fail the report (errors are logged and swallowed). Results:
+  `python -m app.quality.summary --days 7` (exit 1 = below target), or the **Quality** page
+  (`/admin/quality`, `AdminQualityPage.tsx`, `GET /admin/quality` = the same `collect()`): only for
+  emails in `ADMIN_EMAILS` (`require_admin` answers 404 to others; `/auth/me` returns `is_admin`,
+  which adds the nav item). Tests: `tests/test_online_eval.py`.
 
 ## Gotchas (learned the hard way; keep these)
 
@@ -405,6 +417,18 @@ Production gotchas:
   keeps lines and table rows. The ATS education heading also accepts table headers
   ("Examination | University/Board | ... | CPI/%", "Qualifications"): such a resume scored 0 on
   headings although every degree was parsed. Tests in `test_optimizer_rules.py`.
+- **The report only claims what it can know (Nov 2026).** The report eval found invented
+  claims in 5 of 8 reports ("spoke confidently", "calm tone": the model only sees text) and
+  overall scores spreading up to 13 points between runs. Now: `REPORT_PROMPT` forbids manner/tone
+  claims (pace and fillers only from the measured metrics), `drop_unhearable()` removes any that
+  slip through, `temperature=0`, and the overall/technical scores are computed in code from the
+  per-question scores (`scores_from_questions`, weights 60/20/20). Re-run: scores in band,
+  spread <= 8, invented claims down to 1-2 small ones.
+- **Audit fixes (Nov 2026):** the router has an error page (`components/RouteError.tsx`, incl.
+  "Crackit was just updated" for a stale chunk after a deploy); logged-in pages load lazily
+  (`App.tsx`, first download 570 -> 434 KB); queries never retry 4xx answers (`main.tsx`: a
+  missing report sat on a spinner ~7 s); CORS allows PUT (the prep set save); the nightly backup
+  also tars `data/uploads`; production refuses a localhost `APP_URL` when SMTP is set.
 - **Never label every failure "rate limit".** `_ai_error()` logs the real exception; a blanket
   message once hid a schema bug.
 - **Stuck state:** if the interviewer step fails after the answer was recorded, the graph waits

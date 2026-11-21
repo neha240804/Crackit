@@ -11,6 +11,7 @@ from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.groq_key import GroqKeyMissing, has_user_key, looks_like_groq_key, set_user_key
 from app.core.security import decode_access_claims
 from app.db.models import User
@@ -63,3 +64,18 @@ async def require_groq_key(user: CurrentUser) -> User:
 
 # Use instead of CurrentUser on AI routes: `user: KeyedUser`.
 KeyedUser = Annotated[User, Depends(require_groq_key)]
+
+
+def is_admin(user: User) -> bool:
+    """Site owner(s): the emails in ADMIN_EMAILS (settings.admin_emails)."""
+    return user.email.lower() in settings.admin_email_list
+
+
+async def require_admin(user: CurrentUser) -> User:
+    """Admin-only routes. 404, not 403: other users can't even tell the page exists."""
+    if not is_admin(user):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not Found")
+    return user
+
+
+AdminUser = Annotated[User, Depends(require_admin)]

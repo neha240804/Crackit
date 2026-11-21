@@ -2,7 +2,7 @@
 // A top bar (not a sidebar) fits a single-purpose app with only a few sections.
 // The bar is solid paper with a hairline border: no blur, no translucency.
 
-import { LayoutGrid, LogOut, MessageSquareHeart, Plus } from 'lucide-react'
+import { Gauge, LayoutGrid, LogOut, MessageSquareHeart, Plus } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router'
 
 import { Logo } from '@/components/Brand'
@@ -25,6 +25,8 @@ const NAV = [
 export function AppShell() {
   const { user, logout } = useAuth()
   const { pathname } = useLocation()
+  // The site owner (ADMIN_EMAILS on the server) also gets the AI quality page.
+  const nav = user?.is_admin ? [...NAV, { to: '/admin/quality', label: 'Quality', short: 'Quality', icon: Gauge }] : NAV
   return (
     <div className="min-h-screen bg-paper">
       <header className="sticky top-0 z-30 border-b border-ink-200/80 bg-paper">
@@ -34,7 +36,7 @@ export function AppShell() {
           <nav className="flex items-center gap-0.5 sm:gap-1" aria-label="Main">
             {/* Phones: icons only, plus the CURRENT page's short label, so you always know where
                 you are; three labels + account buttons overflowed a 375 px screen. */}
-            {NAV.map(({ to, label, short, icon: Icon }) => (
+            {nav.map(({ to, label, short, icon: Icon }) => (
               <NavLink key={to} to={to} aria-label={label} title={label} className={({ isActive }) => cn(
                 'group flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[13px] transition-colors sm:px-3 sm:text-sm',
                 isActive ? 'active bg-ink-900/[0.06] font-medium text-ink-900' : 'text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900')}>

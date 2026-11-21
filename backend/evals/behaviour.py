@@ -17,15 +17,11 @@ Checked by a strong-model judge reading the transcript:
 """
 
 import json
-import re
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, Field
 
 from app.agents.common.llm import get_llm, get_structured_llm
 from app.agents.interview.graph import (
-    MAX_FOLLOW_UPS,
-    MISSES,
     interviewer_node,
     non_answer_reaction,
     opening_node,
@@ -33,13 +29,12 @@ from app.agents.interview.graph import (
     prepare_node,
     thread_info,
 )
-from app.services.prep_service import is_repeat
+from app.quality.checks import NAMES, TARGETS
+from app.quality.checks import turn_checks as code_checks  # same rules as online
+from app.quality.judge import JUDGE, Verdicts, verdict_checks
 from evals.common import DATA_DIR, Metric, Pacer, SuiteResult, Timer, pct, with_retry
 
 STYLES = {"strong", "partial", "weak"}
-PRAISE = re.compile(r"\b(great|excellent|good (job|start|effort|answer|point)|nice|well done|"
-                    r"brilliant|perfect|spot on)\b", re.IGNORECASE)
-MAX_TURN_WORDS = 70
 
 SIMULATOR = """You play a candidate in a {level} {kind} interview{about}. Answer the
 interviewer's LAST question out loud, in the first person, in 2-4 natural spoken sentences.
@@ -58,33 +53,6 @@ HR_STYLE_RULES = {
 }
 
 
-class TurnVerdict(BaseModel):
-    turn: int = Field(description="Turn number as given")
-    reveals_answer: bool = Field(description="States the answer or the key missing idea to a question "
-                                             "the candidate got wrong or did not answer")
-    asks_calculation: bool = Field(description="Asks for something that needs a calculation: values "
-                                               "to compute, a formula to solve, a size to work out")
-    on_topic: bool = Field(description="The question fits the interview topic (or the candidate's "
-                                       "own background as it relates to it)")
-    one_question: bool = Field(description="Asks exactly one question (one ask, even if worded in "
-                                           "two short sentences)")
-    note: str = Field(description="One short reason if any check fails, else empty")
-
-
-class Verdicts(BaseModel):
-    turns: list[TurnVerdict]
-
-
-JUDGE = """You review a mock interview transcript turn by turn. For EVERY numbered interviewer
-turn, decide:
-- reveals_answer: true if the interviewer states the correct answer, or the key idea the
-  candidate was missing, for a question the candidate got wrong, half right or did not answer.
-  A hint that nudges ("think about what happens at no load") is NOT revealing. Confirming or
-  adding to an answer the candidate already got RIGHT is not revealing either.
-- asks_calculation: true if the question needs a numerical calculation to answer.
-- on_topic: true if the question fits the interview topic "{topic}" ({kind}).
-- one_question: true if it asks exactly one question.
-Be strict and literal; add a short note for any failing check."""
 
 
 def load() -> list[dict]:
@@ -101,26 +69,6 @@ async def simulate(sc: dict, style: str, question: str) -> str:
                                                    HumanMessage(f"INTERVIEWER: {question}")]),
                              f"simulate {sc['id']}")
     return str(reply.content).strip()
-
-
-def code_checks(turn: dict, prior_questions: list[str]) -> dict:
-    """Rules checked in code for one interviewer turn (after the candidate's answer)."""
-    checks = {}
-    miss = turn["assessment"] in MISSES
-    if turn["index"] > 0:  # the introduction has no right or wrong
-        if miss and (turn["misses_before"] >= 1 or turn["depth_before"] >= MAX_FOLLOW_UPS):
-            checks["flow"] = turn["next_move"] == "new_topic"
-        elif miss:
-            checks["flow"] = turn["next_move"] == "hint"
-        elif turn["depth_before"] >= MAX_FOLLOW_UPS:
-            checks["flow"] = turn["next_move"] == "new_topic"
-    if turn["non_answer"]:
-        checks["non_answer_is_miss"] = miss
-        checks["no_praise_after_non_answer"] = not PRAISE.search(turn["reply"])
-    if turn["next_move"] != "hint":  # the guided retry after a hint may repeat the question
-        checks["no_repeat"] = not any(is_repeat(turn["reply"], q) for q in prior_questions)
-    checks["short"] = len(turn["reply"].split()) <= MAX_TURN_WORDS
-    return checks
 
 
 async def run_scenario(sc: dict, pacer: Pacer) -> dict:
@@ -167,28 +115,9 @@ async def run_scenario(sc: dict, pacer: Pacer) -> dict:
     for turn in turns:
         v = by_turn.get(turn["index"])
         if v:
-            turn["checks"].update({"never_reveals_answer": not v.reveals_answer,
-                                   "no_calculation": not v.asks_calculation,
-                                   "on_topic": v.on_topic, "one_question": v.one_question})
+            turn["checks"].update(verdict_checks(v))
             turn["judge_note"] = v.note
     return {"id": sc["id"], "plan": state["plan"], "turns": turns}
-
-
-TARGETS = {  # check -> (target %, what it means)
-    "flow": (90, "Hint after a first miss; new topic after a second miss or 3 follow-ups."),
-    "non_answer_is_miss": (100, '"I don\'t know" / "tell me the answer" counted as a miss.'),
-    "no_praise_after_non_answer": (100, "No \"great\" / \"nice\" after a non-answer."),
-    "never_reveals_answer": (95, "The interviewer never states the answer to a missed question (judge)."),
-    "no_calculation": (100, "No question needs a calculation (judge)."),
-    "on_topic": (95, "Questions fit the chosen topic (judge)."),
-    "one_question": (90, "One question per turn (judge)."),
-    "no_repeat": (95, "No question asked twice, except the guided retry after a hint."),
-    "short": (90, f"Whole turn under {MAX_TURN_WORDS} words (it is spoken aloud)."),
-}
-NAMES = {"flow": "Coaching flow (hint, then move on)", "non_answer_is_miss": "Non-answers judged as misses",
-         "no_praise_after_non_answer": "No praise after a non-answer", "never_reveals_answer": "Never gives the answer",
-         "no_calculation": "No calculation questions", "on_topic": "Stays on topic", "one_question": "One question per turn",
-         "no_repeat": "No repeated questions", "short": "Turns short enough to speak"}
 
 
 async def run(limit: int | None = None, pace: float = 12.0) -> SuiteResult:

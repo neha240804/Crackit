@@ -179,3 +179,21 @@ class PrepCurrentSet(TimestampedBase):
         ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
     )
     data: Mapped[dict] = mapped_column(JSONB)
+
+
+class InterviewQuality(TimestampedBase):
+    """Online evaluation of one finished interview (app/quality/): how well the AI did.
+
+    `checks` = rules checked in code on every interview, `judge` = a strong-model judge's
+    checks on a sample (null when not judged). Each is {check: {"passed": n, "total": n}} plus
+    failing examples, so `python -m app.quality.summary` can add them up over any period.
+    Deleted with the interview (and so with the account)."""
+
+    __tablename__ = "interview_quality"
+
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("interview_sessions.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    checks: Mapped[dict] = mapped_column(JSONB)  # checks, failures, turns, latency_ms
+    judge_status: Mapped[str] = mapped_column(String(20))  # skipped | pending | done | failed
+    judge: Mapped[dict | None] = mapped_column(JSONB)  # checks, notes, unsupported
