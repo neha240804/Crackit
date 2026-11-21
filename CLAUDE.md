@@ -82,7 +82,7 @@ End ─────────────── POST /{id}/end ─────
 Report page ─────── POST /{id}/report ─────────────► build_report (strong LLM + code metrics), cached
 ```
 
-### Database (9 tables)
+### Database (10 tables)
 
 `users`, `resumes` (parsed profile JSONB, `purpose` interview|ats, one primary per purpose), `job_descriptions`, `resume_versions`
 (optimized rewrite + analysis JSONB + DOCX path), `interview_sessions`
@@ -91,7 +91,8 @@ candidate's emoji rating 1-5 + optional comment, asked as the interview ends), `
 `starred_questions` (Prep stars, full question copy, unique per user + normalised text) and
 `prep_current_sets` (the Prep page's current study set incl. marks, JSONB, one per user) and
 `password_reset_tokens` (SHA-256 of a one-time reset link, 30 min; `users.password_changed_at`
-signs out every token issued before a reset).
+signs out every token issued before a reset) and `site_feedback` (the Feedback page: category
+bug/idea/interviewer/other, optional emoji rating, message; read it with SQL, no admin screen).
 No table stores a Groq API key (a test enforces it). `usage_counters` (the old daily
 allowance) was dropped in migration `b7c1d2e3f4a5`.
 LangGraph creates its own `checkpoint*` tables (Alembic ignores them).
@@ -315,6 +316,32 @@ Production gotchas:
   falls back to the other model on rate limit / 5xx / invalid JSON; keep `max_retries=1`
   (more retries meant ~8 s of silence). Keep the interviewer prompt small (2 KB sections,
   last 10 messages, ~1.8k tokens/turn).
+- **AI quota per 15-minute interview (measured Nov 21, 2026, `scripts/measure_interview_quota.py`):**
+  16 interviewer turns ~2,900 tokens each (94% prompt) + plan 1.8k = ~48k tokens on
+  `gpt-oss-20b`, report ~7k on `gpt-oss-120b`, Whisper ~430-500 billed seconds (up to 2x with
+  speculative transcription). Free limits are per Groq ACCOUNT: 200k tokens/day per model, so
+  ~4 fifteen-minute interviews fit on the fast model; a 5th runs on the strong model via the
+  fallback. Prep/ATS draw from the same allowance. Prompt caching (Groq: cached tokens don't
+  count) was tried by moving everything that changes per turn out of the system message into an
+  "INTERVIEW STATE" block in the human message: behaviour eval unchanged (9/9 checks), but
+  cache hits were rare (2 of 16 turns, ~8% of prompt tokens, measured on `gpt-oss-120b` because
+  the day's 20b quota was used up). Kept (harmless), but don't count on it for quota.
+  **Prompt shrink (kept):** one question-bank section per turn, the one matching the current
+  or next topic (`pick_kb_section`), and older transcript lines compacted while the last 4 stay
+  whole and every earlier QUESTION stays visible (`turn_transcript`). Measured on the same 11
+  turns: 3,010 -> 2,479 tokens per turn (-17.6%); behaviour eval 9/9 unchanged. A 15-minute
+  interview is now ~40k tokens: 5 a day fit the fast model's 200k with almost no room left
+  (prep/ATS use pushes the 5th onto the strong model via the fallback).
+- **5 interviews per rolling 24 hours per user** (`settings.daily_interview_limit`,
+  `services/interview_allowance.py`): what a free Groq key carries at ~40k tokens per
+  15-minute interview; a 6th would run out of quota mid-interview. Counts interviews whose
+  clock STARTED (`config.started_at`), checked both at set-up (`start`) and at Start
+  (`begin`; resuming never counts again); 429 with "available in X h Y min". Rolling window,
+  like Groq's own (no time zones). `GET /interviews/allowance` feeds "x of 5 left" on New
+  interview (Start disabled at 0) and the Dashboard; the room shows the 429 if Start is refused.
+  Tests: `tests/test_daily_limit_and_feedback.py`.
+- **Feedback page** (`/feedback`, top bar after ATS check, `FeedbackPage.tsx`; `POST`/`GET
+  /feedback`): category, optional emoji rating, message; lists what the user sent before.
 - **RAG always returns k results, even unrelated ones.** The question bank covers software,
   data, HR and managerial topics only; for "power system" a plain top-k returned backend/SQL
   sections, the model treated them as the syllabus and wrote SQL questions. Question-bank

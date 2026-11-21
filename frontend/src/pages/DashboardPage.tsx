@@ -12,7 +12,7 @@ import { Card, ErrorAlert, Eyebrow, Spinner } from '@/components/ui'
 import { buttonClass, fieldClass } from '@/components/ui/styles'
 import { useGroqKey } from '@/features/account/api'
 import { useAuth } from '@/features/auth/context'
-import { useInterviews } from '@/features/interview/api'
+import { formatNextSlot, useInterviewAllowance, useInterviews } from '@/features/interview/api'
 import { FORMAT_TONE } from '@/features/interview/constants'
 import { useStarred } from '@/features/prep/api'
 import { toolById } from '@/features/product'
@@ -134,6 +134,7 @@ function ToolCard({ id, hint }: { id: 'prep' | 'ats'; hint: string }) {
 export function DashboardPage() {
   const { user } = useAuth()
   const interviews = useInterviews()
+  const allowance = useInterviewAllowance()
   const resumes = useResumes('interview')
   const hasResume = Boolean(resumes.data?.some((r) => r.status === 'ready'))
   const starredCount = useStarred().data?.length ?? 0 // saved on the account
@@ -210,6 +211,13 @@ export function DashboardPage() {
             <div>
               <p className="font-serif text-xl font-semibold">{interview.name}</p>
               <p className="mt-1 text-sm leading-relaxed text-ink-500">{interview.tagline} Choose a format:</p>
+              {allowance.data && (
+                <p className={cn('mt-2 text-xs font-medium', allowance.data.remaining === 0 ? 'text-warning-700' : 'text-ink-500')}>
+                  {allowance.data.remaining === 0
+                    ? `No interviews left for now${allowance.data.next_available_at ? `: the next one ${formatNextSlot(allowance.data.next_available_at)}` : ''}`
+                    : `${allowance.data.remaining} of ${allowance.data.limit} interviews left in the last 24 hours`}
+                </p>
+              )}
             </div>
           </div>
           <ul className="mt-5 grid gap-2 sm:grid-cols-2">

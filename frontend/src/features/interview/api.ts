@@ -25,6 +25,30 @@ export function useInterview(id: string) {
   })
 }
 
+/** Interviews that can still be started in the rolling 24 hours (5: what a free Groq key
+ * carries; backend/app/services/interview_allowance.py). */
+export interface InterviewAllowance {
+  limit: number
+  used: number
+  remaining: number
+  next_available_at: string | null
+}
+
+export function useInterviewAllowance() {
+  return useQuery({
+    queryKey: ['interview-allowance'],
+    queryFn: () => api<InterviewAllowance>('/interviews/allowance'),
+    refetchInterval: 60_000, // the window rolls: a slot can free up while the page is open
+  })
+}
+
+/** "today at 14:20" or "tomorrow at 09:05", in the user's own time zone. */
+export function formatNextSlot(iso: string) {
+  const at = new Date(iso)
+  const time = at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return `${at.toDateString() === new Date().toDateString() ? 'today' : 'tomorrow'} at ${time}`
+}
+
 export function useStartInterview() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -36,6 +60,7 @@ export function useStartInterview() {
         deadline_ms: Date.now() + session.remaining_seconds * 1000,
       })
       queryClient.invalidateQueries({ queryKey: ['interviews'] })
+      queryClient.invalidateQueries({ queryKey: ['interview-allowance'] })
     },
   })
 }

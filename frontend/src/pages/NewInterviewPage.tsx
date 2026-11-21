@@ -9,7 +9,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router'
 import { Avatar } from '@/components/Brand'
 import { Button, Card, ErrorAlert } from '@/components/ui'
 import { buttonClass, fieldClass } from '@/components/ui/styles'
-import { useStartInterview } from '@/features/interview/api'
+import { formatNextSlot, useInterviewAllowance, useStartInterview } from '@/features/interview/api'
 import { LevelPicker } from '@/components/LevelPicker'
 import { PageHero } from '@/components/PageHero'
 import { DURATIONS, FORMAT_TONE, INTERVIEWERS, INTERVIEW_TYPES, POPULAR_TOPICS } from '@/features/interview/constants'
@@ -88,6 +88,8 @@ export function NewInterviewPage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const start = useStartInterview()
+  const allowance = useInterviewAllowance()
+  const noneLeft = allowance.data?.remaining === 0
   const { stream, status } = useUserMedia(true)
   const videoRef = useRef<HTMLVideoElement>(null)
 
@@ -288,11 +290,19 @@ export function NewInterviewPage() {
           </div>
           <div className="space-y-4 border-t border-ink-200 px-6 py-5 sm:px-10">
           {start.error && <ErrorAlert message={start.error.message} />}
+          {/* 5 a day: a free Groq key's daily quota carries about 5 fifteen-minute interviews. */}
+          {allowance.data && (
+            <p className={cn('text-sm', noneLeft ? 'rounded-xl bg-warning-50 px-3.5 py-2.5 text-warning-700' : 'text-ink-500')}>
+              {noneLeft
+                ? <>You've done {allowance.data.limit} interviews in the last 24 hours, the most a free Groq key can carry in a day.{allowance.data.next_available_at && <> Your next one is available <strong>{formatNextSlot(allowance.data.next_available_at)}</strong>.</>}</>
+                : <><strong className="font-medium text-ink-700">{allowance.data.remaining} of {allowance.data.limit}</strong> interviews left in the last 24 hours (up to 15 minutes each).</>}
+            </p>
+          )}
           <div className="flex items-center justify-end gap-3">
             {needsResume && <p className="mr-auto text-sm text-warning-700">Add a resume above to continue.</p>}
             <Link to="/dashboard" className={buttonClass('ghost')}>Cancel</Link>
             {/* The camera is optional; answers are voice only, so the room asks for the mic if it is missing. */}
-            <Button onClick={onStart} loading={start.isPending} disabled={missing || status === 'idle' || status === 'pending'} className="px-7 py-3">
+            <Button onClick={onStart} loading={start.isPending} disabled={missing || noneLeft || status === 'idle' || status === 'pending'} className="px-7 py-3">
               Start interview
             </Button>
           </div>

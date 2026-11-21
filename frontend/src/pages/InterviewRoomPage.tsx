@@ -360,9 +360,16 @@ function Room({ session }: { session: InterviewSession }) {
       setClockRunning(true)
       voiceRef.current = turn.voice ?? 'server'
       chunks = turn.speech_chunks // the server has been generating the greeting since load
-    } catch {
-      // Not fatal: the server also starts the clock on the first answer.
+    } catch (err) {
+      // The daily limit (429) is final: don't start talking. Anything else isn't fatal: the
+      // server also starts the clock on the first answer.
+      if (err instanceof ApiError && err.status === 429) {
+        setPhase('error')
+        setNotice(err.message)
+        return
+      }
     }
+    void queryClient.invalidateQueries({ queryKey: ['interview-allowance'] })
     // Fresh: the greeting is revealed as it is spoken. Resumed: the last line is already in
     // the transcript, so it is only repeated aloud.
     void runTurn(currentText, false, chunks, null, fresh)

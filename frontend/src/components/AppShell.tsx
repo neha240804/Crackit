@@ -2,7 +2,7 @@
 // A top bar (not a sidebar) fits a single-purpose app with only a few sections.
 // The bar is solid paper with a hairline border: no blur, no translucency.
 
-import { LayoutGrid, LogOut, Plus } from 'lucide-react'
+import { LayoutGrid, LogOut, MessageSquareHeart, Plus } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router'
 
 import { Logo } from '@/components/Brand'
@@ -11,13 +11,15 @@ import { useAuth } from '@/features/auth/context'
 import { toolById } from '@/features/product'
 import { cn } from '@/lib/utils'
 
-// Ordered by the user's journey: home, study, check the resume. Mock interviews start from
+// Ordered by the user's journey: home, study, check the resume, then tell us how it went.
+// Mock interviews start from
 // the one primary "New interview" button (and the dashboard), so they are not a nav item.
 // `short` is shown on phones, where full labels plus the account buttons don't fit.
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', short: 'Home', icon: LayoutGrid },
   { to: '/prep', label: toolById('prep').name, short: toolById('prep').short, icon: toolById('prep').icon },
   { to: '/resume', label: toolById('ats').name, short: toolById('ats').short, icon: toolById('ats').icon },
+  { to: '/feedback', label: 'Feedback', short: 'Feedback', icon: MessageSquareHeart },
 ]
 
 export function AppShell() {

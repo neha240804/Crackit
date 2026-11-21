@@ -244,19 +244,59 @@ def thread_rule(depth: int, misses: int) -> str:
             "a guided form.")
 
 
+TRANSCRIPT_MESSAGES = 10  # how far back the interviewer sees (so it doesn't repeat itself)
+FULL_RECENT = 4  # the latest messages are sent whole; older ones are compacted
+OLD_QUESTION_CHARS = 170  # an older interviewer line: its end, where the question is
+OLD_ANSWER_CHARS = 120  # an older answer: its start
+
+
+def _words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z]{4,}", text.lower())}
+
+
+def pick_kb_section(kb: str, focus: str) -> str:
+    """The ONE question-bank section most about `focus` (the current thread and the next
+    topic), by shared words with its heading line; the first (most relevant to the whole
+    interview) if none share any. Two sections per turn cost ~560 tokens; one ~280."""
+    sections = [s for s in re.split(r"\n\n(?=\[)", kb) if s.strip()]
+    if len(sections) <= 1:
+        return kb
+    wanted = _words(focus)
+    scores = [len(wanted & _words(s.split("\n", 1)[0])) for s in sections]
+    best = max(range(len(sections)), key=lambda i: (scores[i], -i))
+    return sections[best]
+
+
+def turn_transcript(messages: list[dict]) -> str:
+    """The last TRANSCRIPT_MESSAGES lines, the newest FULL_RECENT in full. Older ones keep
+    what the interviewer needs: the QUESTION it asked (the end of its line; the start is the
+    reaction) so it doesn't ask it again, and the gist of the answer. Saves ~280 tokens a turn
+    (~10%) while still showing every recent question."""
+    recent = messages[-TRANSCRIPT_MESSAGES:]
+    lines = []
+    for i, m in enumerate(recent):
+        text, interviewer = m["text"], m["role"] == "interviewer"
+        if i < len(recent) - FULL_RECENT:
+            if interviewer and len(text) > OLD_QUESTION_CHARS:
+                text = "…" + text[-OLD_QUESTION_CHARS:].split(" ", 1)[-1]
+            elif not interviewer and len(text) > OLD_ANSWER_CHARS:
+                text = text[:OLD_ANSWER_CHARS].rsplit(" ", 1)[0] + "…"
+        lines.append(f"{'INTERVIEWER' if interviewer else 'CANDIDATE'}: {text}")
+    return "\n".join(lines)
+
+
 async def interviewer_node(state: InterviewState) -> dict:
     cfg = state["config"]
     persona = _persona(state)
     plan = state["plan"]
     thread, depth, covered, misses = thread_info(state["messages"])
-    # Smaller prompt = faster replies and fewer tokens (free tier: 8k tokens/MINUTE per model;
-    # with 4 question-bank sections and 14 messages a turn cost ~2.4k tokens).
-    kb = "\n\n".join(re.split(r"\n\n(?=\[)", state["kb"])[:2])
-    transcript = "\n".join(
-        f"{'INTERVIEWER' if m['role'] == 'interviewer' else 'CANDIDATE'}: {m['text']}"
-        for m in state["messages"][-10:]
-    )
-    human = HumanMessage(f"TRANSCRIPT SO FAR:\n{transcript}\n\nYour turn.")
+    target = next_focus_area(plan["focus_areas"], covered, thread)
+    # Smaller prompt = fewer tokens. Measured (scripts/measure_interview_quota.py): a 15-minute
+    # interview cost ~48k tokens on the fast model, 94% of it prompt, and the free tier allows
+    # 200k a day per Groq account: ~4 interviews. So each turn sends ONE question-bank section
+    # (the one about the current or next topic) and a compacted transcript (turn_transcript).
+    kb = pick_kb_section(state["kb"], f"{thread} {target}")
+    human = HumanMessage(f"TRANSCRIPT SO FAR:\n{turn_transcript(state['messages'])}\n\nYour turn.")
 
     # Fast model (falls back to strong): in testing it judged answers as accurately (4/4) and
     # replied ~0.3-1 s faster, which matters in a live conversation. It also has its own
@@ -264,8 +304,6 @@ async def interviewer_node(state: InterviewState) -> dict:
     llm = get_structured_llm(InterviewerTurn, tier="fast", temperature=0.6)
     # Same, plus a drafted topic switch; only when the candidate is already struggling.
     llm_with_switch = get_structured_llm(InterviewerTurnWithSwitch, tier="fast", temperature=0.6)
-
-    target = next_focus_area(plan["focus_areas"], covered, thread)
 
     async def ask() -> InterviewerTurn:
         rule = thread_rule(depth, misses)
@@ -276,17 +314,27 @@ async def interviewer_node(state: InterviewState) -> dict:
                      "a transition like 'Let's try something different.') and switch_question (ONE clear, concrete question about "
                      f"'{target}' at the candidate's level: a single idea, never a definition or a calculation). "
                      "They are used if you have to move on.")
+        # Prompt caching: Groq doesn't count cached prompt tokens against the free daily limit,
+        # and a prompt is cached from its start up to the first difference. So the system
+        # message holds ONLY what stays the same for the whole interview (persona, rules,
+        # level, plan, question bank, resume), and everything that changes per turn (topics
+        # covered, current thread, the mandatory rule, time left, transcript) goes in the
+        # human message after it. Measured with scripts/measure_interview_quota.py: before,
+        # the changing lines sat near the top and 0 of ~2,900 tokens per turn were cached.
         system = INTERVIEWER_PROMPT.format(
             name=persona["name"], style=persona["style"], title=plan["title"],
             interview_type=TYPE_LABEL[cfg["interview_type"]],
             experience=level_label(cfg["experience"]),
             level_guide=level_guide(cfg["experience"]), question_style=REAL_QUESTION_STYLE,
-            focus_areas="; ".join(plan["focus_areas"]), covered=", ".join(covered) or "none yet",
-            thread=thread, depth=depth, thread_rule=rule,
-            remaining=remaining_seconds(state), kb=kb, context=state.get("context") or "-",
+            focus_areas="; ".join(plan["focus_areas"]), kb=kb, context=state.get("context") or "-",
+        )
+        turn_state = (
+            f"INTERVIEW STATE\nCovered so far: {', '.join(covered) or 'none yet'}\n"
+            f'Current thread: "{thread}" with {depth} follow-up(s) already asked on it.{rule}\n'
+            f"Time remaining: about {remaining_seconds(state)} seconds.\n\n"
         )
         model = llm_with_switch if misses == MAX_MISSES - 1 else llm
-        return await model.ainvoke([SystemMessage(system), human])
+        return await model.ainvoke([SystemMessage(system), HumanMessage(turn_state + human.content)])
 
     async def switch_topic() -> InterviewerTurn:
         """Move on, to a topic CODE picks. Asked to "choose a new topic", the model kept

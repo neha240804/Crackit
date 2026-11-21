@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.interview import runtime as interview_runtime
-from app.api.v1 import account, auth, health, interviews, optimizer, prep, resumes
+from app.api.v1 import account, auth, feedback, health, interviews, optimizer, prep, resumes
 from app.core.config import settings
 from app.core.monitoring import init_error_alerts
 from app.rag.embeddings import get_embeddings
@@ -67,5 +67,5 @@ app.add_middleware(
 
 # Every v1 route lives under /api/v1 so a future v2 can sit beside it.
 for router in (health.router, auth.router, resumes.router, optimizer.router, prep.router,
-               interviews.router, account.router):
+               interviews.router, account.router, feedback.router):
     app.include_router(router, prefix="/api/v1")

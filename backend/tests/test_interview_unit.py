@@ -199,3 +199,29 @@ def test_end_of_interview_feedback_is_an_emoji_scale_with_optional_comment():
         with pytest.raises(ValidationError):
             InterviewFeedbackIn(**bad)
     assert any(getattr(r, "path", "") == "/interviews/{session_id}/feedback" for r in router.routes)
+
+
+def test_one_question_bank_section_per_turn_the_one_about_the_current_topic():
+    from app.agents.interview.graph import pick_kb_section
+
+    kb = ("[power_systems.md / Load flow and power system studies]\nNewton-Raphson...\n\n"
+          "[power_systems.md / Faults, symmetrical components and per unit]\nLine-to-ground...")
+    assert pick_kb_section(kb, "Fault analysis and symmetrical components").startswith("[power_systems.md / Faults")
+    assert pick_kb_section(kb, "Something unrelated").startswith("[power_systems.md / Load flow")  # first
+    assert pick_kb_section("(none for this topic)", "x") == "(none for this topic)"
+
+
+def test_compacted_transcript_keeps_recent_lines_whole_and_older_questions_visible():
+    from app.agents.interview.graph import FULL_RECENT, turn_transcript
+
+    long_q = "That's a thoughtful answer about the substation and the testing you did there. " * 3 + \
+        "So what would you check first if the Buchholz relay tripped?"
+    long_a = "I would look at the oil level first, then the gas sample, then the winding tests. " * 3
+    messages = [{"role": "interviewer" if i % 2 == 0 else "candidate", "text": long_q if i % 2 == 0 else long_a}
+                for i in range(12)]
+    out = turn_transcript(messages).split("\n")
+    assert len(out) == 10
+    assert all(line.endswith((long_q, long_a)) for line in out[-FULL_RECENT:])  # whole
+    old_questions = [line for line in out[:-FULL_RECENT] if line.startswith("INTERVIEWER")]
+    assert old_questions and all(line.endswith("Buchholz relay tripped?") and len(line) < 200 for line in old_questions)
+    assert len("\n".join(out)) < 0.8 * sum(len(m["text"]) for m in messages[-10:])
