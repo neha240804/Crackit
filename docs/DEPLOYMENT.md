@@ -132,6 +132,16 @@ Set (the API refuses to start in production with development defaults):
 | `CORS_ORIGINS` | `https://crackit-yourname.duckdns.org` |
 | `SITE_ADDRESS` | `crackit-yourname.duckdns.org` (no `https://`) |
 | `LANGSMITH_TRACING` | `false` (production forces it off anyway: traces would contain user data) |
+| `APP_URL` | `https://crackit-yourname.duckdns.org` (used in password-reset links) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | your email provider's SMTP details (see *Password-reset email* below) |
+| `CONTACT_EMAIL` | the address shown on `/privacy` for questions about data |
+| `SENTRY_DSN` | optional: error alerts (see *Monitoring*) |
+
+**Password-reset email.** Any provider with SMTP works; most have a free tier big enough for
+this (for example Brevo, Mailjet or Resend). Create an account, verify the sending domain or
+address, and copy its SMTP host, port (587), user and password into `.env`, with `MAIL_FROM`
+like `Crackit <no-reply@your-domain>`. Without it, "Forgot password?" answers 503 and the
+backend logs a warning at every start. Test it once: request a reset for your own account.
 
 There is no server Groq key: every user adds their own free key in Settings (bring-your-own-key
 only). The AI features answer 428 "add your key" until they do.
@@ -158,10 +168,16 @@ Tip: `alias dcp='docker compose -f docker-compose.prod.yml'` in `~/.bashrc` save
 
 - **Self-healing:** every container has `restart: unless-stopped`, so crashes and VM reboots
   bring it back. The backend's healthcheck calls `/api/v1/health` (Postgres + Qdrant).
-- **Uptime alerts (free):** <https://uptimerobot.com> → *New monitor* → type **Keyword**,
-  URL `https://<your domain>/api/v1/health`, keyword `"status":"ok"` (alert when it does *not*
-  exist), interval 5 min, alert contact = your email. A keyword check catches both "site down"
-  and "site up but database unreachable" (the endpoint then says `degraded`).
+- **Uptime alerts (free):** <https://uptimerobot.com> (or Better Stack, Healthchecks) → *New
+  monitor* → type **HTTP(s)**, URL `https://<your domain>/api/v1/health`, interval 5 min, alert
+  contact = your email. The endpoint answers **503** when Postgres or Qdrant is unreachable
+  (it used to answer 200 with `degraded`, which a plain HTTP monitor would miss), so it catches
+  both "site down" and "site up but broken". Keyword `"status":"ok"` works as well.
+- **Error alerts (optional, free tier):** create a project at <https://sentry.io> (platform
+  Python / FastAPI), copy its DSN into `SENTRY_DSN`, restart. Unhandled server errors (a crash
+  in an interview, a failing report) then arrive by email. Privacy: `core/monitoring.py` sends
+  only the error and its stack trace: no request bodies, headers (no Groq keys), local variables
+  or user data. The privacy notice says so; keep them in step.
 - **Logs:** `dcp logs --tail 200 backend`. Docker keeps at most 5 × 10 MB per container.
 - **Disk:** `df -h /` now and then; backups and Docker images are the growing parts
   (`docker image prune -f` after updates).
@@ -283,9 +299,36 @@ Conclusion: server-side voice does not scale to many simultaneous users on this 
 Orpheus model on each user's own key (`TTS_ENGINE=groq`, the default), one request per line:
 a 10-14 s line took ~2-2.5 s, three at once 3.2 s, and none of it uses the server CPU. Kokoro
 stays as the fallback for an interview whose user hasn't accepted the Orpheus terms on their
-Groq account or has used today's 100 voice requests, so the load test above still describes
+Groq account or has used up the day's voice quota, so the load test above still describes
 how many of THOSE interviews the server can voice at once. `TTS_ENGINE=kokoro` switches Groq
 voice off.
+
+**Correction (Nov 21, 2026): Orpheus's free tier is far smaller than first measured.** The
+response headers show 100 requests/day and 1,200 characters/minute, but there is also a cap of
+**3,600 characters per day** per Groq account that only appears when it is hit (a live
+5-minute interview switched to the Kokoro voice after 4-5 questions). One 15-minute interview
+needs ~4,000 characters, so the free Groq voice cannot carry even one.
+
+**In-browser Kokoro prototype (a `/voice-lab` page, Nov 21, 2026; removed after the test)**, same lines and measure as the
+server load test, Chromium in the dev laptop's browser pane (hidden, which may slow it):
+
+| Engine | Model download | Work per second of audio | Wait before speaking |
+|---|---|---|---|
+| CPU (WebAssembly, 1 thread: page not cross-origin isolated) | ~90 MB (q8), 39 s first time | ~3.0 | ~26 s |
+| GPU (WebGPU, fp32) | 326 MB, 60 s first time | ~0.9-1.0 | 4.0-5.8 s |
+| CPU, multithreaded (COOP/COEP headers) | - | - | did not finish starting in ~3 min |
+
+So on this laptop even the GPU path waits longer than the 3 s target, CPU-only devices are far
+too slow, and the first visit downloads 90-330 MB.
+
+**Decision (Nov 21, 2026): the interviewer speaks with the student's own browser voice**
+(`TTS_ENGINE=browser`, the default). It is instant and unlimited, needs no download and no
+server work, and never changes mid-interview, so every student can do 3 x 15-minute interviews
+a day. The server no longer generates speech or loads Kokoro, so this capacity section no
+longer limits how many people can interview at once. `TTS_ENGINE=kokoro` / `groq` bring the
+server voices back (with the limits above). The in-browser prototype was removed after the
+test (its kokoro-js dependency pulls `onnxruntime-node`, whose install script broke the image
+build); to try it again on other devices, rebuild it from these notes.
 
 ## Troubleshooting
 

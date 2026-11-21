@@ -12,7 +12,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.groq_key import GroqKeyMissing, has_user_key, looks_like_groq_key, set_user_key
-from app.core.security import decode_access_token
+from app.core.security import decode_access_claims
 from app.db.models import User
 from app.db.session import get_db
 
@@ -27,8 +27,13 @@ async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     x_groq_key: Annotated[str | None, Header()] = None,
 ) -> User:
-    user_id = decode_access_token(token)
-    user = await db.get(User, user_id) if user_id else None
+    claims = decode_access_claims(token)
+    user = await db.get(User, claims[0]) if claims else None
+    # A password change (reset) signs out every token issued before it. JWT times are whole
+    # seconds, so compare whole seconds: a login in the same second as the reset still works.
+    if (user is not None and user.password_changed_at is not None and claims is not None
+            and claims[1] < int(user.password_changed_at.timestamp())):
+        user = None
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -6,6 +6,8 @@
 """
 
 import asyncio
+import hashlib
+import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -45,15 +47,33 @@ async def verify_password_async(password: str, password_hash: str) -> bool:
 
 
 def create_access_token(user_id: uuid.UUID) -> str:
-    expires = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
-    payload = {"sub": str(user_id), "exp": expires}
+    now = datetime.now(UTC)
+    expires = now + timedelta(minutes=settings.access_token_expire_minutes)
+    # iat (issued at): lets a password reset refuse every token issued before it (deps.py).
+    payload = {"sub": str(user_id), "exp": expires, "iat": now}
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
 def decode_access_token(token: str) -> uuid.UUID | None:
     """Return the user id, or None if the token is invalid or expired."""
+    claims = decode_access_claims(token)
+    return claims[0] if claims else None
+
+
+def decode_access_claims(token: str) -> tuple[uuid.UUID, float] | None:
+    """(user id, issued-at as a Unix time; 0 for tokens from before iat was added), or None."""
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
-        return uuid.UUID(payload["sub"])
-    except (jwt.PyJWTError, KeyError, ValueError):
+        return uuid.UUID(payload["sub"]), float(payload.get("iat", 0))
+    except (jwt.PyJWTError, KeyError, ValueError, TypeError):
         return None
+
+
+def new_reset_token() -> tuple[str, str]:
+    """(token for the emailed link, its SHA-256 for the database). 256 bits of randomness."""
+    token = secrets.token_urlsafe(32)
+    return token, hash_reset_token(token)
+
+
+def hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()

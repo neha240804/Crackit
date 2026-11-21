@@ -26,6 +26,7 @@ dependencies = [
     "psycopg[binary,pool]>=3.3.9",
     "kokoro-onnx>=0.6.1",
     "cryptography>=45",
+    "sentry-sdk>=2.75.0",
 ]
 
 [dependency-groups]

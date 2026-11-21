@@ -9,6 +9,7 @@ from app.api.deps import CurrentUser, DbSession, KeyedUser
 from app.core.rate_limit import per_user
 from app.schemas.interview import (
     InterviewConfig,
+    InterviewFeedbackIn,
     InterviewSessionOut,
     InterviewSummaryOut,
     InterviewTurnOut,
@@ -102,6 +103,16 @@ async def answer(
 @router.post("/{session_id}/end", response_model=InterviewTurnOut)
 async def end_interview(session_id: uuid.UUID, user: CurrentUser, db: DbSession):
     return await svc.end(db, user, session_id)
+
+
+@router.post("/{session_id}/feedback", status_code=204,
+             dependencies=[per_user("interview-feedback", times=10, seconds=60)])
+async def interview_feedback(
+    session_id: uuid.UUID, body: InterviewFeedbackIn, user: CurrentUser, db: DbSession
+) -> None:
+    """The candidate's emoji rating (1-5) and optional comment, asked when the interview
+    ends. Sending again replaces it."""
+    await svc.save_feedback(db, user, session_id, body)
 
 
 @router.post("/{session_id}/report", dependencies=[per_user("report", times=6, seconds=60)])

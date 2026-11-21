@@ -151,7 +151,11 @@ export interface InterviewTurn {
   remaining_seconds: number
   transcript: string | null
   speech_chunks: string[] // the utterance split for the voice; already generating on the server
+  voice?: VoiceEngine // which voice speaks this line (server setting; older servers omit it)
 }
+
+/** 'browser': the student's own browser voice (the default). 'server': /tts (Kokoro or Groq). */
+export type VoiceEngine = 'browser' | 'server'
 
 export interface AnswerMetrics {
   words: number

@@ -9,6 +9,9 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+# Shown on the privacy page as the contact for data questions (optional; baked in at build).
+ARG VITE_CONTACT_EMAIL=""
+ENV VITE_CONTACT_EMAIL=$VITE_CONTACT_EMAIL
 # tsc type-check + Vite bundle into /app/dist. The app calls the API with relative /api/...
 # URLs, so the same bundle works on any domain.
 RUN npm run build

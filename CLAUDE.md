@@ -40,8 +40,8 @@ interviewer, not a chatbot reading predefined questions:
 - Time-boxed, resumable after a refresh, and ends with a **scored feedback report**
   (per question + communication metrics).
 - **Free to run**: Groq free tier for LLM + Whisper, on **each user's own key** (bring-your-own-key
-  only: no server key, no free allowance); the interviewer's voice is Groq Orpheus on the
-  same key, with local Kokoro as the fallback.
+  only: no server key, no free allowance); the interviewer's voice is the **student's own
+  browser voice** (no quota, no server work), so 3 x 15-minute interviews a day work for anyone.
 - **No numerical questions anywhere**: nothing that needs a calculation (bank, interviewer,
   switch, prep). Ask for the reasoning behind it instead.
 - Built as a learning project: keep code readable and explain *why* in comments.
@@ -55,7 +55,7 @@ interviewer, not a chatbot reading predefined questions:
 | Agent | LangGraph graph with `interrupt()` + **Postgres checkpointer** (`langgraph-checkpoint-postgres`, psycopg) |
 | LLM | Groq `openai/gpt-oss-20b` (interviewer, plan: "fast") / `gpt-oss-120b` (resume parsing, report: "strong"), strict JSON-schema output, each falls back to the other |
 | Speech-to-text | Groq `whisper-large-v3-turbo` |
-| Text-to-speech | **Groq `canopylabs/orpheus-v1-english`** on the user's key (Maya = diana, Arjun = troy, Sara = hannah); fallback **Kokoro-82M via `kokoro-onnx`**, local CPU, full fp32 model (int8 measured ~5x slower here) |
+| Text-to-speech | **The browser's own voice** (Web Speech API, `speakBrowser()` in `media.ts`; `TTS_ENGINE=browser`, the default). Still available by setting: `kokoro` (**Kokoro-82M via `kokoro-onnx`** on the server, full fp32 model; int8 measured ~5x slower) and `groq` (**Groq `canopylabs/orpheus-v1-english`** on the user's key; Maya = diana, Arjun = troy, Sara = hannah) |
 | RAG | Qdrant + FastEmbed (`BAAI/bge-small-en-v1.5`, 384-dim): question banks + rubrics in `knowledge_base/`, resume chunks |
 | Tracing | LangSmith (env vars in `.env`, project `mock-interview-ai`) |
 
@@ -82,13 +82,16 @@ End ─────────────── POST /{id}/end ─────
 Report page ─────── POST /{id}/report ─────────────► build_report (strong LLM + code metrics), cached
 ```
 
-### Database (8 tables)
+### Database (9 tables)
 
 `users`, `resumes` (parsed profile JSONB, `purpose` interview|ats, one primary per purpose), `job_descriptions`, `resume_versions`
 (optimized rewrite + analysis JSONB + DOCX path), `interview_sessions`
-(config JSONB incl. `started_at`, `thread_id`, `report` JSONB), `interview_turns`,
+(config JSONB incl. `started_at`, `thread_id`, `report` JSONB, `user_feedback` JSONB: the
+candidate's emoji rating 1-5 + optional comment, asked as the interview ends), `interview_turns`,
 `starred_questions` (Prep stars, full question copy, unique per user + normalised text) and
-`prep_current_sets` (the Prep page's current study set incl. marks, JSONB, one per user).
+`prep_current_sets` (the Prep page's current study set incl. marks, JSONB, one per user) and
+`password_reset_tokens` (SHA-256 of a one-time reset link, 30 min; `users.password_changed_at`
+signs out every token issued before a reset).
 No table stores a Groq API key (a test enforces it). `usage_counters` (the old daily
 allowance) was dropped in migration `b7c1d2e3f4a5`.
 LangGraph creates its own `checkpoint*` tables (Alembic ignores them).
@@ -148,7 +151,7 @@ build_report(): separate function, called after the interview
 | `backend/app/agents/interview/runtime.py` | psycopg pool + `AsyncPostgresSaver` + compiled graph (FastAPI lifespan) |
 | `backend/app/services/interview_service.py` | start / begin / transcribe / answer / end / report / history; error mapping and stuck-state recovery |
 | `backend/app/services/stt.py` | Whisper (vocab prompt, silence-hallucination guard) |
-| `backend/app/services/tts.py` | Voice: Groq Orpheus first (`_groq_speech`, one request per line), Kokoro fallback per interview (`_groq_off`), `speech_chunks()`, in-flight dedupe, cache, `presynthesize()` |
+| `backend/app/services/tts.py` | Server voice (only when `TTS_ENGINE` is `kokoro` or `groq`): Groq Orpheus (`_groq_speech`, one request per line), Kokoro fallback per interview (`_groq_off`), `speech_chunks()`, in-flight dedupe, cache, `presynthesize()`. `interview_service._voice()` decides per turn |
 | `backend/app/services/speech_metrics.py` | WPM, filler words (computed in code, not by the LLM) |
 | `backend/app/schemas/interview.py` | API + LLM schemas, `PERSONAS` (maya / arjun / sara) |
 | `backend/app/agents/profile/graph.py`, `sources.py` | Resume parsing graph; resume → numbered sources for the interviewer |
@@ -168,7 +171,7 @@ build_report(): separate function, called after the interview
 | `frontend/src/pages/LandingPage.tsx` | Public page, worded as a general mock-interview site: hero naming all three tools (+ jump links) with a resume-based sample exchange, "three tools" section, how a mock interview works, interview features, report sample, interviewers, closing CTA |
 | `frontend/src/pages/DashboardPage.tsx` | Action first: unfinished interviews → the three tools (interview card holds the 4 formats, `/interviews/new?type=…`) → progress + history → habits and facts below the fold. No duplicate New-interview button (it's in the top bar) |
 | `frontend/src/pages/NewInterviewPage.tsx` | Device checks (fixed column) + interview settings (only this card scrolls on lg); reads `?type=` and `?topic=`; resume/JD formats pick or upload an interview resume (`features/resume/InterviewResumePicker.tsx`) and send `resume_id` |
-| `frontend/src/pages/InterviewRoomPage.tsx` | Full-screen "stage": interviewer centre, captions, small self-view, transcript drawer, bottom dock. Voice only (no typed answers). Phase machine `ready → speaking → listening → processing → …` |
+| `frontend/src/pages/InterviewRoomPage.tsx` | Full-screen "stage": interviewer centre, captions, small self-view, transcript drawer, bottom dock. Voice only (no typed answers). Phase machine `ready → speaking → listening → processing → …`. Start screen says "speak English only" (Whisper runs with `language="en"`). When the interview ends, `features/interview/EndFeedback.tsx` asks for an emoji rating + optional comment (`POST /interviews/{id}/feedback`), then opens the report; Skip or an error goes straight on |
 | `frontend/src/pages/InterviewReportPage.tsx` | Feedback report |
 | `frontend/src/pages/ResumePage.tsx` (`/resume`, nav "ATS check") | Check only: upload/select an ATS resume + optional JD → `POST /optimizer/analyze` → report (`features/ats/AtsReport.tsx`: score, action plan, missing keywords, gaps, format checks). The backend rewrite/DOCX endpoints still exist but have no UI |
 | `frontend/src/pages/PrepPage.tsx` (`/prep`, nav "Question prep") | Dark hero band (`PrepHero`: title, the three steps as chips, live stats starred / got it / to review; the starred tile opens the list), mode tabs that light up in their own colour (By topic sage, From your resume clay, Starred honey), colour-filled selected track tiles, difficulty cards with signal bars (`LevelBars`; sage / honey / clay), summary chips beside the action, a track-coloured banner with a progress strip over the set, a solid sage "practise out loud" card. Mode switch ("By topic" / "From your resume"), numbered setup (colour-coded track tiles with icons → topic → level with a one-line meaning), live summary of what you will get, one action → study set (difficulty-coloured cards, progress ring); answers hidden until revealed, Got it / Review again marks, progress, "More questions", link to a mock interview. Every question in a set is at the chosen difficulty (enforced in `prep_service.generate`). Only the current set is kept (no "recent sets"), saved to the account (`/prep/current`, debounced); a star on each question saves it to the **Starred questions** tab (`/prep/starred`, full copy of question + answer, topic filter, optimistic toggle) for revision (`features/prep/api.ts`). Old localStorage data (`mockinterview_prep_v1`, `mockinterview_starred_v1`) moves to the first account that opens Prep in that browser, once |
@@ -188,12 +191,32 @@ build_report(): separate function, called after the interview
   if the candidate stays silent, `/answer` gets text directly (Whisper is off the waiting path).
 - **Live captions:** browser SpeechRecognition (Chrome/Edge), rebuilt from the full result list
   each event (no duplicated words); captions count as activity only near real speech.
-- **Two voice engines (Nov 2026):** server-side Kokoro voiced only ~1 interview at a time
+- **Voice = the browser's own voice (product decision, Nov 21, 2026; `TTS_ENGINE=browser`).**
+  Goal: 3 x 15-minute interviews a day per student, free. Every server/AI voice was measured and
+  failed that: server Kokoro ~1 interview at a time; Groq Orpheus free = 3,600 chars/day (< one
+  15-minute interview, ~4,000 chars) and it switched voice mid-interview when it ran out;
+  Kokoro IN the browser (a `/voice-lab` prototype, kokoro-js in a Web Worker, since removed: its
+  `onnxruntime-node` dependency broke the Docker build): ~26 s wait per line
+  on CPU, 4-6 s on WebGPU, 90-330 MB first download. So each turn carries `voice: "browser"`,
+  `speech_chunks` is empty, the server generates nothing and doesn't load Kokoro, and the room
+  speaks every line with `speakBrowser()` (best-ranked English voice: "Natural"/"Online" neural
+  voices first, e.g. Edge's; gender per interviewer). No "browser voice" warning is shown: it is
+  the chosen voice. The notes below describe the server engines, still selectable by setting.
+- **Browser voice and the on-screen line stay in step** (`speakBrowser()`): the reveal used to
+  assume 16 chars/s, so it drifted from real voices. Now word-boundary events (most local
+  voices: Windows/macOS/Android) report each word as it is said and the room shows exactly
+  that (measured: screen = voice word, +-1, over 36 words); voices without them (Chrome's
+  online Google voices) use the speed measured on their earlier pieces. Pieces are <= 160
+  chars (`chunkText`): Chrome's Google voices stop mid-sentence on ~15 s utterances.
+- **Server voice engines (`kokoro`, `groq`; Nov 2026):** server-side Kokoro voiced only ~1 interview at a time
   without gaps (load test, `docs/DEPLOYMENT.md` > Capacity; 4-core VM: ~6 s wait even for
   one). So `settings.tts_engine = "groq"`: each line is ONE Groq Orpheus request on the
   user's key (~2-2.5 s for a 10-14 s line; a reply presynthesized while the answer response
-  travels was ready in 0.3 s). Free tier: 100 voice requests/day/key (~6 ten-minute
-  interviews), ~1,200 chars/min; per sentence would cost 3x the requests. Each Groq account
+  travels was ready in 0.3 s). **Free tier: only 3,600 characters a DAY per Groq account**
+  (plus 100 requests/day, 1,200 chars/min): ~15 lines, less than one 15-minute interview
+  (~4,000 chars). The daily cap is NOT in the response headers; it showed up only as a 429
+  ("tokens per day (TPD): Limit 3600") mid-interview, and the voice switched to Kokoro. An
+  earlier "~6 interviews a day" estimate from the headers was wrong. Each Groq account
   must accept the Orpheus terms once (Settings links it). On a refusal (`model_terms_required`,
   429, bad key) that interview falls back to Kokoro for 15-60 min (`_groq_off`), so no line pays
   a failed round trip twice. Groq streams WAV: the header length is a placeholder, so
@@ -397,6 +420,23 @@ Production gotchas:
   state (it's checkpointed to Postgres). Key
   failures map to 400 + "update it in Settings" (`agents/common/errors.py`), never 401 (the
   frontend logs out on 401).
+- **Accounts (Nov 2026):** password reset = `POST /auth/forgot-password` (same 202 answer
+  whether or not the email exists; the email is sent in a background task so timing doesn't
+  tell either; one live link per user, 30 min, single use) + `POST /auth/reset-password`.
+  Email is plain SMTP (`services/email.py`, any provider); unset in dev = the link is logged,
+  unset in production = 503 + a startup warning. Login JWTs carry `iat`; `get_current_user`
+  refuses tokens issued before `password_changed_at` (whole seconds: a login in the same second
+  as the reset still works). `POST /account/delete` (password again; wrong password = 400, never
+  401, which logs out) removes Qdrant resume chunks, LangGraph checkpoints (`adelete_thread`),
+  resume/DOCX files, then the user row (everything else cascades): `services/account_service.py`.
+  `/privacy` (frontend `PrivacyPage.tsx`) states exactly what is stored and shared, including
+  the browser's speech services (Chrome sends caption audio to Google) and Groq on the user's
+  key; keep it in step with any data change. `VITE_CONTACT_EMAIL` (compose `CONTACT_EMAIL`)
+  sets its contact line. Tests: `tests/test_account_safety.py`.
+- **Monitoring:** `/health` answers **503** when Postgres or Qdrant is down (it used to answer
+  200 + "degraded", invisible to HTTP uptime monitors). Optional Sentry (`SENTRY_DSN`,
+  `core/monitoring.py`): no request bodies, headers, local variables, user or breadcrumbs;
+  Sentry's defaults would have sent answers, resumes and the X-Groq-Key header.
 - **`APP_ENV=production`** makes startup fail on development defaults (SECRET_KEY, DB
   password, localhost/`*` CORS) and hides `/docs`. CORS origins come from
   `CORS_ORIGINS` in `.env`. Tests: `tests/test_hardening.py`.

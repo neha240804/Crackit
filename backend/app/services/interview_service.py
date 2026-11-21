@@ -3,6 +3,7 @@
 import logging
 import time
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, UploadFile, status
 from langgraph.types import Command
@@ -13,11 +14,13 @@ from app.agents.common.errors import ai_http_error
 from app.agents.interview import runtime
 from app.agents.interview.graph import answered_pairs, build_report, remaining_seconds
 from app.agents.profile.sources import build_sources, format_sources
+from app.core.config import settings
 from app.db.models import InterviewSession, InterviewTurn, JobDescription, Resume, User
 from app.db.session import release_connection
 from app.schemas.interview import (
     PERSONAS,
     InterviewConfig,
+    InterviewFeedbackIn,
     InterviewSessionOut,
     InterviewSummaryOut,
     InterviewTurnOut,
@@ -67,6 +70,14 @@ def _context(config: InterviewConfig, resume: Resume | None) -> str:
     return "\n\n".join(parts)
 
 
+def _voice(text: str, interviewer: str, stream: str) -> dict:
+    """How the room voices this line. Browser voice (the default): the server does nothing.
+    Server voice: start generating now, before the browser asks for it."""
+    if settings.tts_engine == "browser":
+        return {"voice": "browser", "speech_chunks": []}
+    return {"voice": "server", "speech_chunks": tts.presynthesize(text, interviewer, stream)}
+
+
 def _turn_out(
     values: dict, interrupted: dict | None, transcript: str | None = None, stream: str = "default"
 ) -> InterviewTurnOut:
@@ -75,12 +86,11 @@ def _turn_out(
         return InterviewTurnOut(utterance=interrupted["utterance"], kind=interrupted["kind"],
                                 done=False, remaining_seconds=remaining_seconds(values),
                                 transcript=transcript,
-                                # start generating the voice now, before the browser asks
-                                speech_chunks=tts.presynthesize(interrupted["utterance"], interviewer, stream))
+                                **_voice(interrupted["utterance"], interviewer, stream))
     last = values["messages"][-1]  # graph finished: the closing line
     return InterviewTurnOut(utterance=last["text"], kind=last["kind"], done=True,
                             remaining_seconds=0, transcript=transcript,
-                            speech_chunks=tts.presynthesize(last["text"], interviewer, stream))
+                            **_voice(last["text"], interviewer, stream))
 
 
 def _interrupt_value(out: dict) -> dict | None:
@@ -128,6 +138,17 @@ async def _get_session(db: AsyncSession, user: User, session_id: uuid.UUID) -> I
     if session is None or session.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Interview not found")
     return session
+
+
+async def save_feedback(
+    db: AsyncSession, user: User, session_id: uuid.UUID, feedback: InterviewFeedbackIn
+) -> None:
+    """Store (or replace) the candidate's rating of this interview."""
+    session = await _get_session(db, user, session_id)
+    comment = (feedback.comment or "").strip() or None
+    session.user_feedback = {"rating": feedback.rating, "comment": comment,
+                             "at": datetime.now(UTC).isoformat(timespec="seconds")}
+    await db.commit()
 
 
 async def _ensure_waiting(session: InterviewSession) -> tuple:

@@ -13,14 +13,14 @@
 // open. The room is exactly one screen tall; answers are voice only (no typing).
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock, Loader2, Mic, PhoneOff, ScrollText, SkipForward, X } from 'lucide-react'
+import { Clock, Languages, Loader2, Mic, PhoneOff, ScrollText, SkipForward, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { Avatar, Logo } from '@/components/Brand'
 import { Spinner } from '@/components/ui'
 import { ApiError } from '@/lib/api'
-import type { InterviewMessage, InterviewSession, InterviewTurn } from '@/lib/types'
+import type { InterviewMessage, InterviewSession, InterviewTurn, VoiceEngine } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 import {
@@ -32,6 +32,7 @@ import {
   useInterview,
 } from '@/features/interview/api'
 import { INTERVIEWERS } from '@/features/interview/constants'
+import { EndFeedback } from '@/features/interview/EndFeedback'
 import {
   AnswerRecorder,
   LiveCaptions,
@@ -106,8 +107,11 @@ const NO_VAD: VadState = { speaking: false, heard: false, silenceMs: 0 }
  */
 function StreamingLine({ before, text, durationSec }: SpokenPart) {
   const words = text.split(/\s+/).filter(Boolean)
-  const [shown, setShown] = useState(1)
+  // durationSec 0: the voice reported exactly what it has said (word-boundary events), so
+  // show it all now; animating from the first word would flicker on every word.
+  const [shown, setShown] = useState(durationSec > 0 ? 1 : words.length)
   useEffect(() => {
+    if (durationSec <= 0) return
     const start = performance.now()
     const perWord = (durationSec * 1000) / Math.max(1, words.length)
     const timer = window.setInterval(() => {
@@ -153,6 +157,10 @@ function Room({ session }: { session: InterviewSession }) {
   // The clock runs only once the candidate pressed Start (server stores started_at).
   const [clockRunning, setClockRunning] = useState(Boolean(session.config.started_at))
   const [notice, setNotice] = useState<string | null>(null)
+  // Asked once, right as the interview ends (not when reopening a finished one).
+  const [askFeedback, setAskFeedback] = useState(false)
+  // Which voice the server says to use (browser by default); one voice per interview.
+  const voiceRef = useRef<VoiceEngine>('browser')
   // Transcript drawer: open by default on wide screens, where it doesn't cover the stage.
   const [showTranscript, setShowTranscript] = useState(() => window.matchMedia('(min-width: 1280px)').matches)
   const [vad, setVad] = useState<VadState>(NO_VAD)
@@ -214,7 +222,7 @@ function Room({ session }: { session: InterviewSession }) {
       setCurrentText(spokenSoFar)
       setStreaming({ ...part, id: Date.now() }) // the stage streams this part word by word
       if (isNew) setSpeakingText(spokenSoFar)
-    })
+    }, voiceRef.current)
     setCurrentText(utterance)
     setStreaming(null)
     setSpeakingText(null)
@@ -315,6 +323,7 @@ function Room({ session }: { session: InterviewSession }) {
       setLive({ final: '', interim: '' })
       setDeadline(turn.deadline_ms)
       setClockRunning(true) // the server starts it on the first answer at the latest
+      voiceRef.current = turn.voice ?? 'server'
       await runTurn(turn.utterance ?? '', turn.done, turn.speech_chunks, turn.kind)
     } catch (err) {
       setLive({ final: '', interim: '' })
@@ -333,7 +342,7 @@ function Room({ session }: { session: InterviewSession }) {
     // report page refetches it instead of showing "still in progress".
     void queryClient.invalidateQueries({ queryKey: ['interview', session.id] })
     void queryClient.invalidateQueries({ queryKey: ['interviews'] })
-    navigate(`/interviews/${session.id}/report`)
+    setAskFeedback(true) // emoji feedback first; it then opens the report (or Skip does)
   }
 
   // ---------------------------------------------------------------- controls
@@ -349,6 +358,7 @@ function Room({ session }: { session: InterviewSession }) {
       const turn = await beginInterview(session.id)
       setDeadline(turn.deadline_ms)
       setClockRunning(true)
+      voiceRef.current = turn.voice ?? 'server'
       chunks = turn.speech_chunks // the server has been generating the greeting since load
     } catch {
       // Not fatal: the server also starts the clock on the first answer.
@@ -375,6 +385,7 @@ function Room({ session }: { session: InterviewSession }) {
     setPhase('processing')
     try {
       const turn = await endInterview(session.id)
+      voiceRef.current = turn.voice ?? 'server'
       await runTurn(turn.utterance ?? '', true, turn.speech_chunks, 'closing')
     } catch {
       finish()
@@ -443,6 +454,13 @@ function Room({ session }: { session: InterviewSession }) {
 
           {/* the conversation, as captions */}
           <div className="mt-10 w-full max-w-3xl text-center">
+            {/* Speech is transcribed as English (stt.py: language="en"), so answers in another
+                language come out garbled: say it before the interview starts. */}
+            {phase === 'ready' && (
+              <p className="mx-auto flex w-fit items-center gap-2 rounded-full border border-[#e2c07f]/25 bg-[#e2c07f]/10 px-4 py-1.5 text-sm text-[#e2c07f]">
+                <Languages className="size-4 shrink-0" aria-hidden /> Please speak English only during the interview
+              </p>
+            )}
             {speaking && streaming ? (
               // Streams word by word, in step with the voice.
               <p className="font-serif text-xl leading-snug text-paper sm:text-[1.75rem]">
@@ -551,10 +569,15 @@ function Room({ session }: { session: InterviewSession }) {
               )}
             </div>
             <p className="hidden text-center text-xs text-ink-500 sm:block">
-              Answer out loud. A 2-second pause sends your answer. Your camera never leaves this device.
+              Speak English only. Answer out loud; a 2-second pause sends your answer. Your camera never leaves this device.
             </p>
           </footer>
         </main>
+
+        {askFeedback && (
+          <EndFeedback sessionId={session.id} interviewer={persona.name}
+            onDone={() => navigate(`/interviews/${session.id}/report`)} />
+        )}
 
         {/* ------------------------------------------------ transcript drawer */}
         {showTranscript && (

@@ -76,10 +76,21 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             <Input label="Email" name="email" type="email" required autoComplete="email" />
             <Input label="Password" name="password" type="password" required minLength={isRegister ? 8 : undefined}
               autoComplete={isRegister ? 'new-password' : 'current-password'} />
+            {!isRegister && (
+              <p className="-mt-2 text-right text-sm">
+                <Link to="/forgot-password" className="text-ink-500 underline decoration-ink-300 underline-offset-4 hover:text-ink-900">Forgot password?</Link>
+              </p>
+            )}
             {error && <ErrorAlert message={error} />}
             <Button type="submit" loading={submitting} className="w-full py-3">
               {isRegister ? 'Create account' : 'Log in'}
             </Button>
+            {isRegister && (
+              <p className="text-center text-xs leading-relaxed text-ink-500">
+                By creating an account you agree to how we handle your data, described in the{' '}
+                <Link to="/privacy" className="underline underline-offset-2 hover:text-ink-900">privacy notice</Link>.
+              </p>
+            )}
           </form>
           <p className="mt-8 text-center text-sm text-ink-500">
             {isRegister ? 'Already have an account? ' : 'New here? '}

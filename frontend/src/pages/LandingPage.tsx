@@ -282,6 +282,7 @@ export function LandingPage() {
           <nav className="flex flex-wrap gap-x-6 gap-y-2" aria-label="Footer">
             {TOOLS.map((t) => <a key={t.id} href={`#${t.id}`} className="transition-colors hover:text-ink-900">{t.name}</a>)}
             <Link to="/login" className="transition-colors hover:text-ink-900">Log in</Link>
+            <Link to="/privacy" className="transition-colors hover:text-ink-900">Privacy</Link>
           </nav>
         </Container>
       </footer>

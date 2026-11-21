@@ -6,8 +6,9 @@ study set). LLM output (parsed profiles, reports, scores) is stored as JSONB.
 """
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -24,9 +25,25 @@ class User(TimestampedBase):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(120))
+    # Login tokens (JWT) issued before this moment are refused (api/deps.py): a password reset
+    # signs out every other device, which matters if the account was taken over. Tokens are
+    # stateless, so without this a stolen token kept working until it expired (24 h).
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # No Groq API key here, on purpose: a user's own key stays in their browser (encrypted
     # there) and arrives with each request in the X-Groq-Key header, used for that request only
     # (api/deps.py). A database leak or backup can never expose it.
+
+
+class PasswordResetToken(TimestampedBase):
+    """A one-time password-reset link. Only the SHA-256 of the token is stored, so a database
+    leak can't be used to reset anyone's password; the token itself exists only in the email."""
+
+    __tablename__ = "password_reset_tokens"
+
+    user_id: Mapped[uuid.UUID] = user_fk()
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Resume(TimestampedBase):
@@ -96,6 +113,9 @@ class InterviewSession(TimestampedBase):
     thread_id: Mapped[str] = mapped_column(String(64))  # LangGraph checkpoint thread
     status: Mapped[str] = mapped_column(String(20), default="active")  # active|completed
     report: Mapped[dict | None] = mapped_column(JSONB)
+    # The candidate's own rating of the interview, asked as it ends: {"rating": 1-5 (emoji
+    # scale), "comment": str | None, "at": ISO time}. Product feedback, not shown in reports.
+    user_feedback: Mapped[dict | None] = mapped_column(JSONB)
 
     turns: Mapped[list["InterviewTurn"]] = relationship(
         back_populates="session", order_by="InterviewTurn.seq"

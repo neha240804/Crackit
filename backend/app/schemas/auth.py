@@ -22,6 +22,22 @@ class RegisterRequest(BaseModel):
         return value
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+    password: str = Field(min_length=8)
+
+    @field_validator("password")
+    @classmethod
+    def fits_bcrypt(cls, value: str) -> str:
+        if len(value.encode()) > MAX_PASSWORD_BYTES:
+            raise ValueError(f"Password is too long (max {MAX_PASSWORD_BYTES} bytes)")
+        return value
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(max_length=256)  # longer can't be a real password; skip the work

@@ -7,8 +7,9 @@ generates on Groq with the user's own key (bring-your-own-key), so capacity no l
 on the server: a 10 s line came back in ~2.3 s, three at once in 3.2 s.
 
 - Groq: ONE request per interviewer line (presynthesize returns the whole line as a single
-  chunk). The free tier allows 100 voice requests a day per key; per line that's ~6
-  ten-minute interviews a day, per sentence it would be ~2.
+  chunk). Free-tier limits per Groq account: 3,600 characters a DAY (not shown in the
+  response headers; found when a live interview hit it), 100 requests a day, 1,200 characters
+  a minute. That is ~15 interviewer lines: less than one 15-minute interview.
 - Kokoro (Kokoro-82M, open source, Apache-2.0, ONNX Runtime): used when the engine is
   "kokoro", when the request has no key, or for the rest of an interview once Groq refused
   (terms not accepted on the user's Groq account, daily limit reached, key rejected). Lines

@@ -94,3 +94,19 @@ def test_streamed_groq_wav_is_read_in_full():
     data[40:44] = struct.pack("<I", 0x7FFFFFFF)  # data chunk size = "unknown", as streamed
     samples, rate = tts.read_wav(bytes(data))
     assert rate == 24000 and len(samples) == 24000
+
+
+def test_browser_voice_is_the_default_and_the_server_voices_nothing(monkeypatch):
+    """Product decision: the student's browser voices every line (no quota, no server load,
+    no voice change mid-interview). The server then returns no chunks and generates nothing."""
+    from app.core.config import Settings
+    from app.services import interview_service
+
+    assert Settings(_env_file=None).tts_engine == "browser"
+    calls = []
+    monkeypatch.setattr(tts, "presynthesize", lambda *a: calls.append(a) or ["chunk"])
+    monkeypatch.setattr(interview_service.settings, "tts_engine", "browser")
+    assert interview_service._voice("Hello there.", "maya", "s") == {"voice": "browser", "speech_chunks": []}
+    assert calls == []
+    monkeypatch.setattr(interview_service.settings, "tts_engine", "kokoro")
+    assert interview_service._voice("Hello there.", "maya", "s") == {"voice": "server", "speech_chunks": ["chunk"]}

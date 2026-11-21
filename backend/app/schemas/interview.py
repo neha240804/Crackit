@@ -114,6 +114,13 @@ class Message(BaseModel):
     duration_sec: float | None = None
 
 
+class InterviewFeedbackIn(BaseModel):
+    """How the interview felt, asked as it ends: an emoji scale, 1 (bad) to 5 (great)."""
+
+    rating: int = Field(ge=1, le=5)
+    comment: str | None = Field(None, max_length=1000)
+
+
 class InterviewTurnOut(BaseModel):
     """What the client needs after each step."""
 
@@ -123,7 +130,11 @@ class InterviewTurnOut(BaseModel):
     remaining_seconds: int
     transcript: str | None = None  # the candidate's transcribed answer (on /answer)
     # The utterance split for the voice (already being generated on the server, in order).
+    # Empty with the browser voice: the server voices nothing.
     speech_chunks: list[str] = []
+    # Which voice the room uses for this line: the student's browser voice, or the server
+    # voice (/tts). From settings.tts_engine, so the whole interview keeps one voice.
+    voice: Literal["browser", "server"] = "browser"
 
 
 class TranscriptOut(BaseModel):

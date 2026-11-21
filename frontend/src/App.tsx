@@ -16,7 +16,9 @@ import { InterviewReportPage } from '@/pages/InterviewReportPage'
 import { InterviewRoomPage } from '@/pages/InterviewRoomPage'
 import { LandingPage } from '@/pages/LandingPage'
 import { NewInterviewPage } from '@/pages/NewInterviewPage'
+import { ForgotPasswordPage, ResetPasswordPage } from '@/pages/PasswordResetPages'
 import { PrepPage } from '@/pages/PrepPage'
+import { PrivacyPage } from '@/pages/PrivacyPage'
 import { ResumePage } from '@/pages/ResumePage'
 import { SettingsPage } from '@/pages/SettingsPage'
 
@@ -31,6 +33,9 @@ const router = createBrowserRouter([
   { path: '/', element: <LandingPage /> },
   { path: '/login', element: <AuthPage mode="login" /> },
   { path: '/register', element: <AuthPage mode="register" /> },
+  { path: '/forgot-password', element: <ForgotPasswordPage /> },
+  { path: '/reset-password', element: <ResetPasswordPage /> },
+  { path: '/privacy', element: <PrivacyPage /> },
   {
     element: (
       <RequireAuth>

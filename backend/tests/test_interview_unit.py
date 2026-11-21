@@ -184,3 +184,18 @@ def test_prep_repeat_filter_catches_rewordings_but_keeps_new_angles():
         "Can you walk me through the Resume Matcher project you built at DataNest Labs?",
     )
     assert not is_repeat("What makes an API RESTful?", "How would you design pagination for a public API?")
+
+
+def test_end_of_interview_feedback_is_an_emoji_scale_with_optional_comment():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.api.v1.interviews import router
+    from app.schemas.interview import InterviewFeedbackIn
+
+    assert InterviewFeedbackIn(rating=5).comment is None
+    assert InterviewFeedbackIn(rating=1, comment="The voice paused a lot").rating == 1
+    for bad in ({"rating": 0}, {"rating": 6}, {"rating": 3, "comment": "x" * 1001}):
+        with pytest.raises(ValidationError):
+            InterviewFeedbackIn(**bad)
+    assert any(getattr(r, "path", "") == "/interviews/{session_id}/feedback" for r in router.routes)
