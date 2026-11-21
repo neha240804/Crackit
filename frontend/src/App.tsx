@@ -1,27 +1,24 @@
 // Routes.
-//   public:            /  (landing), /login, /register
+//   public:            /  (landing), /login, /register, /forgot-password, /reset-password, /privacy
 //   logged in (light): /dashboard, /resume (ATS check), /prep (question prep), /settings,
-//                      /interviews/new, /interviews/:id/report
+//                      /feedback, /interviews/new, /interviews/:id/report, /admin/quality (owner)
 //   logged in (dark):  /interviews/:id  (full-screen interview room, no top bar)
+//
+// Public pages are in the main bundle (first visits land on them). Logged-in pages load
+// when first opened (`lazy`): the app used to be ONE 570 KB script that every visitor of the
+// landing page downloaded, interview room and prep included.
 
 import type { ReactNode } from 'react'
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router'
 
 import { AppShell } from '@/components/AppShell'
+import { RouteError } from '@/components/RouteError'
 import { Spinner } from '@/components/ui'
 import { useAuth } from '@/features/auth/context'
 import { AuthPage } from '@/pages/AuthPage'
-import { DashboardPage } from '@/pages/DashboardPage'
-import { FeedbackPage } from '@/pages/FeedbackPage'
-import { InterviewReportPage } from '@/pages/InterviewReportPage'
-import { InterviewRoomPage } from '@/pages/InterviewRoomPage'
 import { LandingPage } from '@/pages/LandingPage'
-import { NewInterviewPage } from '@/pages/NewInterviewPage'
 import { ForgotPasswordPage, ResetPasswordPage } from '@/pages/PasswordResetPages'
-import { PrepPage } from '@/pages/PrepPage'
 import { PrivacyPage } from '@/pages/PrivacyPage'
-import { ResumePage } from '@/pages/ResumePage'
-import { SettingsPage } from '@/pages/SettingsPage'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth()
@@ -31,37 +28,47 @@ function RequireAuth({ children }: { children: ReactNode }) {
 }
 
 const router = createBrowserRouter([
-  { path: '/', element: <LandingPage /> },
-  { path: '/login', element: <AuthPage mode="login" /> },
-  { path: '/register', element: <AuthPage mode="register" /> },
-  { path: '/forgot-password', element: <ForgotPasswordPage /> },
-  { path: '/reset-password', element: <ResetPasswordPage /> },
-  { path: '/privacy', element: <PrivacyPage /> },
   {
-    element: (
-      <RequireAuth>
-        <AppShell />
-      </RequireAuth>
-    ),
+    // One error page for every route (a crash, or a page file gone after a deploy), and a
+    // spinner while the first lazily loaded page arrives.
+    errorElement: <RouteError />,
+    hydrateFallbackElement: <Spinner label="Loading…" />,
     children: [
-      { path: '/dashboard', element: <DashboardPage /> },
-      { path: '/resume', element: <ResumePage /> },
-      { path: '/prep', element: <PrepPage /> },
-      { path: '/settings', element: <SettingsPage /> },
-      { path: '/feedback', element: <FeedbackPage /> },
-      { path: '/interviews/new', element: <NewInterviewPage /> },
-      { path: '/interviews/:id/report', element: <InterviewReportPage /> },
+      { path: '/', element: <LandingPage /> },
+      { path: '/login', element: <AuthPage mode="login" /> },
+      { path: '/register', element: <AuthPage mode="register" /> },
+      { path: '/forgot-password', element: <ForgotPasswordPage /> },
+      { path: '/reset-password', element: <ResetPasswordPage /> },
+      { path: '/privacy', element: <PrivacyPage /> },
+      {
+        element: (
+          <RequireAuth>
+            <AppShell />
+          </RequireAuth>
+        ),
+        errorElement: <RouteError />,
+        children: [
+          { path: '/dashboard', lazy: async () => ({ Component: (await import('@/pages/DashboardPage')).DashboardPage }) },
+          { path: '/resume', lazy: async () => ({ Component: (await import('@/pages/ResumePage')).ResumePage }) },
+          { path: '/prep', lazy: async () => ({ Component: (await import('@/pages/PrepPage')).PrepPage }) },
+          { path: '/settings', lazy: async () => ({ Component: (await import('@/pages/SettingsPage')).SettingsPage }) },
+          { path: '/feedback', lazy: async () => ({ Component: (await import('@/pages/FeedbackPage')).FeedbackPage }) },
+          { path: '/interviews/new', lazy: async () => ({ Component: (await import('@/pages/NewInterviewPage')).NewInterviewPage }) },
+          // Site owner only (ADMIN_EMAILS); the API answers 404 to everyone else.
+          { path: '/admin/quality', lazy: async () => ({ Component: (await import('@/pages/AdminQualityPage')).AdminQualityPage }) },
+          { path: '/interviews/:id/report', lazy: async () => ({ Component: (await import('@/pages/InterviewReportPage')).InterviewReportPage }) },
+        ],
+      },
+      {
+        path: '/interviews/:id',
+        lazy: async () => {
+          const { InterviewRoomPage } = await import('@/pages/InterviewRoomPage')
+          return { element: <RequireAuth><InterviewRoomPage /></RequireAuth> }
+        },
+      },
+      { path: '*', element: <Navigate to="/" replace /> },
     ],
   },
-  {
-    path: '/interviews/:id',
-    element: (
-      <RequireAuth>
-        <InterviewRoomPage />
-      </RequireAuth>
-    ),
-  },
-  { path: '*', element: <Navigate to="/" replace /> },
 ])
 
 export default function App() {

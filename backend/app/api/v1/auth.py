@@ -12,7 +12,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, is_admin
 from app.core import rate_limit
 from app.core.config import settings
 from app.core.rate_limit import per_ip
@@ -85,8 +85,8 @@ async def token(
 
 
 @router.get("/me", response_model=UserOut)
-async def me(user: CurrentUser) -> User:
-    return user
+async def me(user: CurrentUser) -> UserOut:
+    return UserOut.model_validate(user).model_copy(update={"is_admin": is_admin(user)})
 
 
 # ---------------------------------------------------------------- password reset

@@ -64,6 +64,17 @@ class Settings(BaseSettings):
     # "come back at 14:20". Rolling 24 h, like Groq's own limit (no time-zone questions).
     daily_interview_limit: int = 5
 
+    # Online evaluation (app/quality/): every finished interview is checked in code (free).
+    # A sample is also read by an AI judge, on the SITE OWNER's own Groq key: never a
+    # student's, whose free quota is what limits them to 5 interviews a day. Judging costs
+    # ~4-6k tokens per interview, so a free owner key carries ~30 a day. Empty = no judge.
+    online_eval_groq_key: str = ""
+    online_eval_sample_rate: float = 0.25  # share of finished interviews the judge reads
+    online_eval_daily_max: int = 25  # judged interviews per rolling 24 h (the owner's quota)
+    # Who may open the admin pages (/admin/quality), comma-separated emails. Empty = nobody.
+    # Accounts are matched by their sign-up email; everyone else gets a plain 404.
+    admin_emails: str = ""
+
     # Error alerts (optional): a Sentry DSN sends unhandled server errors to Sentry, with no
     # request bodies, headers or user data (see main.py). Empty = off.
     sentry_dsn: str = ""
@@ -120,6 +131,10 @@ class Settings(BaseSettings):
         return self.app_env.lower() in ("production", "prod")
 
     @property
+    def admin_email_list(self) -> set[str]:
+        return {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
+
+    @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
@@ -140,6 +155,10 @@ class Settings(BaseSettings):
             problems.append("POSTGRES_PASSWORD is still the development default")
         if any(o.startswith("http://localhost") or o == "*" for o in self.cors_origin_list):
             problems.append("CORS_ORIGINS must list the real site origin(s), not localhost or *")
+        # With email set up, reset links are built from APP_URL; left at the dev default every
+        # reset email would point to localhost and silently not work (audit, Nov 2026).
+        if self.smtp_host and ("localhost" in self.app_url or not self.app_url.startswith("http")):
+            problems.append("APP_URL must be the site's public address (https://...) when SMTP is set")
         if problems:
             raise ValueError("Unsafe production settings: " + "; ".join(problems))
         return self

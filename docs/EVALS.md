@@ -220,3 +220,58 @@ quota runs out mid-run, the script saves the queries it finished.
 ## 7. Baseline (first full run)
 
 Filled in from the first full run; compare later runs against these numbers.
+
+## 8. Online evaluation (real interviews, while the site runs)
+
+The suites above test the AI on fixed datasets before a release. Real students give answers no
+dataset has, so every finished interview is also checked in production (`backend/app/quality/`).
+It runs when the report is built, never slows the student down and never uses their key.
+
+| Layer | When | Cost | What it checks |
+|---|---|---|---|
+| **Code checks** | every finished interview | free (pure Python, a few ms) | coaching flow (hint, then move on), "I don't know" judged as a miss and not praised, no repeated question, turns short enough to speak, no calculation wording, the report scores every answer and gives a model answer, the report's scores agree with the interviewer's live verdicts, interviewer reply time |
+| **AI judge** | a sample: `ONLINE_EVAL_SAMPLE_RATE` (25%), at most `ONLINE_EVAL_DAILY_MAX` (25) per 24 h | ~4-6k tokens each, on **your** key (`ONLINE_EVAL_GROQ_KEY`) | never gives the answer, no calculation questions, stays on topic, one question per turn, report claims supported by the transcript |
+
+The rules and judge prompts are the **same code** as the `behaviour` and `report` suites
+(`app/quality/checks.py`, `app/quality/judge.py`), so a target means the same thing offline and
+online. Results are stored per interview in the `interview_quality` table (deleted with the
+interview), including short quotes of failing turns.
+
+**Setup.** Nothing for the code checks. For the judge, put your own Groq key in the server's
+`.env` as `ONLINE_EVAL_GROQ_KEY` and restart. Without it, interviews are marked "code checks only".
+
+**Read the results in the app:** put your sign-up email in the server's `.env` as
+`ADMIN_EMAILS=you@example.com` and restart. Your account then gets a **Quality** item in the top
+bar (`/admin/quality`): pass rate per check with the target marked, reply time, students'
+rating, the latest failures with the candidate's answer and the interviewer's reply quoted, and
+the latest checked interviews; pick 24 hours, 7, 30 or 90 days. Everyone else gets a 404 there
+(`GET /api/v1/admin/quality`, `require_admin`).
+
+**Or in a terminal** (same numbers):
+
+```bash
+# on the server
+docker compose -f docker-compose.prod.yml exec backend python -m app.quality.summary --days 7
+# locally, from backend/
+uv run python -m app.quality.summary --days 30        # add --json for machine-readable output
+```
+
+It prints each check's pass rate against its target (`BELOW TARGET` only with at least 5
+samples), reply time (median and 90th percentile), the mean report score, the students' own
+emoji rating, and the most recent failures with the quotes to read first. Exit code 1 when a
+check is below target, so a daily cron job can email you:
+
+```bash
+0 8 * * * cd ~/crackit && docker compose -f docker-compose.prod.yml exec -T backend python -m app.quality.summary --days 1 || echo "Crackit quality below target" | mail -s "Crackit eval" you@example.com
+```
+
+**When a check fails online:** read the quoted failures, add the case to the matching offline
+dataset (`evals/data/`, section 5), fix the prompt or rule, re-run that suite, deploy, and
+watch the online rate over the next days. That loop is what makes production failures stop
+recurring.
+
+**First run (Nov 21, 2026, 17 dev-test interviews):** judge checks all at or above target
+(answer never given 100%, no calculations 100%, on topic 100%, report claims grounded 92%);
+coaching flow 31% and calculation wording 93% were low because most of those interviews were
+recorded before the hint rule and the no-numericals change: a fresh baseline needs interviews
+on the current version. Reply times exist only for interviews after this change.

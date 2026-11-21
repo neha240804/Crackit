@@ -41,6 +41,7 @@ export function PrivacyPage() {
             <li><strong>Question prep:</strong> your current study set, your marks on it, and the questions you starred.</li>
             <li><strong>Feedback you send</strong> from the Feedback page: the topic, your rating and your message.</li>
             <li><strong>Password reset:</strong> for 30 minutes after you ask for one, a scrambled copy of the reset link.</li>
+            <li><strong>Quality checks:</strong> after each interview, automatic checks of how well the AI interviewer and report did (for example, whether it gave an answer away), with short quotes of the turns that failed. They are used only to improve Crackit and are deleted with the interview.</li>
           </ul>
         </Section>
 
@@ -58,6 +59,11 @@ export function PrivacyPage() {
               <strong>Groq</strong>, the AI service, under <em>your own</em> Groq account (your API key): it receives your spoken
               answers to transcribe them, and the interview conversation, your resume's details and job descriptions to run the
               interviewer, question prep, the ATS check and your report. Groq's own privacy policy applies to that.
+            </li>
+            <li>
+              <strong>Groq, for quality checks:</strong> some finished interviews (only the conversation and the report: not your
+              account details, resume file or key) are read by an AI reviewer on Crackit's own Groq account, to check that the interviewer and
+              the report did their job. Your Groq key and quota are never used for this.
             </li>
             <li>
               <strong>Your browser's speech services.</strong> Live captions use your browser's built-in speech recognition. In

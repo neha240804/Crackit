@@ -1,10 +1,11 @@
 # Crackit production stack: one VM, five containers.
 #
 #   web (Caddy)  :80/:443 ── HTTPS, static React app, proxies /api ──► backend :8001
-#   backend      FastAPI + LangGraph + Kokoro voice (ONE process; see docker-entrypoint.sh)
+#   backend      FastAPI + LangGraph (ONE process; see docker-entrypoint.sh). The interviewer's
+#                voice is the browser's own (TTS_ENGINE=browser), so no voice work here.
 #   postgres     users, interviews, prep data, LangGraph checkpoints   (no public port)
 #   qdrant       question bank + resume vectors                         (no public port)
-#   backup       nightly pg_dump into ./backups, keeps the newest 7
+#   backup       nightly database dump + uploaded files into ./backups, keeps the newest 7
 #
 # Start / update (from the repo root on the server):
 #   docker compose -f docker-compose.prod.yml up -d --build
@@ -100,6 +101,7 @@ services:
     volumes:
       - ./deploy/backup.sh:/backup.sh:ro
       - ./backups:/backups
+      - ./data/uploads:/uploads:ro   # resume files: backed up next to the database dump
     depends_on:
       postgres:
         condition: service_healthy

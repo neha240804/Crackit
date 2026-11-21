@@ -5,6 +5,7 @@ export interface User {
   id: string
   email: string
   name: string
+  is_admin?: boolean // site owner (ADMIN_EMAILS): sees the AI quality page
 }
 
 export interface TokenResponse {

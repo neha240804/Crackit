@@ -16,28 +16,15 @@ import json
 import statistics
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, Field
 
 from app.agents.common.llm import get_structured_llm
 from app.agents.interview.graph import build_report
+from app.quality.judge import GROUNDED_PROMPT, Groundedness, report_claims
 from evals.common import DATA_DIR, Metric, Pacer, SuiteResult, Timer, pct, with_retry
 
 WPM = 130  # speaking pace used to fill in answer durations (the report measures pace)
 
 
-class Groundedness(BaseModel):
-    """Judge output. All fields required (Groq strict mode)."""
-
-    unsupported: list[str] = Field(description="Claims about the candidate that the transcript "
-                                               "does NOT support, quoted from the report. Empty if none.")
-    claims_checked: int = Field(description="How many claims about the candidate you checked")
-
-
-GROUNDED_PROMPT = """You check an interview feedback report for claims that are not supported by
-the transcript. A claim is unsupported if it credits the candidate with something they did not
-say (a concept, an example, a number, a skill) or describes their answer wrongly. Advice,
-scores and generic coaching ("practise STAR stories") are not claims: ignore them. Judge only
-against the transcript; be strict but fair."""
 
 
 def load() -> dict:
@@ -56,13 +43,14 @@ def to_state(t: dict) -> dict:
 
 
 async def grounded(t: dict, report: dict) -> dict:
-    claims = [f"SUMMARY: {report['summary']}", *[f"STRENGTH: {s}" for s in report["strengths"]],
-              *[f"Q{q['question_index']} STRENGTH: {s}" for q in report["questions"] for s in q["strengths"]]]
+    claims = report_claims(report)
     transcript = "\n".join(f"Q{i}: {q}\nA{i}: {a}" for i, (q, a) in enumerate(t["qa"], 1))
+    metrics = {k: v for k, v in report.get("metrics", {}).items() if k != "per_answer"}
     llm = get_structured_llm(Groundedness, tier="strong", temperature=0)
     verdict: Groundedness = await with_retry(lambda: llm.ainvoke([
         SystemMessage(GROUNDED_PROMPT),
-        HumanMessage(f"TRANSCRIPT:\n{transcript}\n\nREPORT CLAIMS:\n" + "\n".join(claims)),
+        HumanMessage(f"TRANSCRIPT:\n{transcript}\n\nMEASURED SPEECH METRICS: {metrics}\n\n"
+                     "REPORT CLAIMS:\n" + "\n".join(claims)),
     ]), f"groundedness {t['id']}")
     return verdict.model_dump()
 

@@ -225,3 +225,24 @@ def test_compacted_transcript_keeps_recent_lines_whole_and_older_questions_visib
     old_questions = [line for line in out[:-FULL_RECENT] if line.startswith("INTERVIEWER")]
     assert old_questions and all(line.endswith("Buchholz relay tripped?") and len(line) < 200 for line in old_questions)
     assert len("\n".join(out)) < 0.8 * sum(len(m["text"]) for m in messages[-10:])
+
+
+def test_report_drops_claims_about_how_the_candidate_sounded_but_keeps_content():
+    """The report reads a transcript; it can't hear tone or manner (it once praised 'a calm
+    tone' and 'a friendly demeanor'). Content and measured pace claims stay."""
+    from app.agents.interview.graph import drop_unhearable
+
+    invented = ["Polite and professional tone", "Uses a calm tone without rambling", "Friendly demeanor",
+                "Spoke confidently about the project", "Came across as calm and composed"]
+    real = ["Explained the energy losses in the core", "Gave an example of staying calm under pressure",
+            "Good speaking pace (130 wpm) and no filler words", "Named the voltage drop as the cause"]
+    assert drop_unhearable(invented + real) == real
+
+
+def test_overall_and_technical_scores_are_computed_from_the_question_scores():
+    from app.agents.interview.graph import scores_from_questions
+
+    report = {"questions": [{"score": 8}, {"score": 6}, {"score": 7}], "technical_score": 40,
+              "communication_score": 80, "structure_score": 70, "overall_score": 99}
+    assert scores_from_questions(report) == {"technical_score": 70, "overall_score": round(0.6 * 70 + 0.2 * 80 + 0.2 * 70)}
+    assert scores_from_questions({"questions": []}) == {}  # nothing answered: keep what's there
