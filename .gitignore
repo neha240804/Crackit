@@ -19,6 +19,8 @@ dist/
 # Runtime data (uploads, generated files)
 data/
 backend/data/
+# ...but the eval datasets are source, not runtime data
+!backend/evals/data/
 # production database dumps (docker-compose.prod.yml)
 backups/
 
@@ -28,3 +30,4 @@ backups/
 .idea/
 .DS_Store
 Thumbs.db
+backend/evals/results/

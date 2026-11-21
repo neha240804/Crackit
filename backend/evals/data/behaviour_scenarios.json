@@ -1,0 +1,47 @@
+{
+  "_about": "Simulated interviews. Each answer is either a literal text, or a style the candidate simulator plays: strong (a correct, specific answer), partial (half right, misses the key point), weak (confident but technically wrong). Literal non-answers test the coaching rules. The first answer is always the introduction.",
+  "scenarios": [
+    {
+      "id": "machines-strong-run",
+      "type": "topic", "topic": "Electrical machines", "level": "easy",
+      "intro": "Hi, I'm Rahul, a final-year electrical student. I did a summer internship at a 132 kV substation, where I watched the team do transformer oil testing and maintenance.",
+      "answers": ["strong", "strong", "strong", "strong", "strong"],
+      "expect": "Strong answers: dig deeper, then a new topic after at most 3 follow-ups."
+    },
+    {
+      "id": "power-systems-struggling",
+      "type": "topic", "topic": "Power systems", "level": "hard",
+      "intro": "I'm Asha, final-year electrical. My project was a load flow study of our campus network using Newton-Raphson in Python.",
+      "answers": ["weak", "weak", "strong", "I'm not sure, I don't know this one.", "Can you just tell me the answer?", "weak"],
+      "expect": "Hint after the first miss, new topic after the second, never the answer, an honest line after non-answers."
+    },
+    {
+      "id": "protection-partial",
+      "type": "topic", "topic": "Protection and switchgear", "level": "intermediate",
+      "intro": "Hello, I'm Karan. I'm in my final year of electrical engineering and I did my internship in the testing department of a switchgear manufacturer.",
+      "answers": ["partial", "weak", "partial", "strong", "strong"],
+      "expect": "Partial answers count as misses: hint, then move on."
+    },
+    {
+      "id": "sql-mixed-run",
+      "type": "topic", "topic": "SQL", "level": "intermediate",
+      "intro": "Hi, I'm Meera, a computer science graduate. I built a library management system with a Postgres database for my final-year project.",
+      "answers": ["strong", "weak", "I don't know.", "strong", "partial"],
+      "expect": "Mixed: digs on good answers, hints then moves on after misses."
+    },
+    {
+      "id": "ml-nonanswers",
+      "type": "topic", "topic": "Machine learning", "level": "hard",
+      "intro": "I'm Dev. I've worked on a churn prediction model during an internship at a telecom startup.",
+      "answers": ["Can you just tell me the answer?", "No idea, sorry.", "strong", "weak", "weak"],
+      "expect": "Non-answers are misses, no praise for them, the answer is never revealed."
+    },
+    {
+      "id": "hr-round",
+      "type": "hr", "topic": null, "level": "easy",
+      "intro": "Hi, I'm Priya. I'm a final-year electrical student, my project is a solar inverter monitoring system and I interned at a distribution company.",
+      "answers": ["strong", "weak", "strong", "strong"],
+      "expect": "HR: builds on what she said, no technical calculations, one question per turn."
+    }
+  ]
+}

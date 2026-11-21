@@ -246,13 +246,23 @@ Production gotchas:
 
 ## Testing
 
-- Backend: `uv run pytest` and `uv run ruff check app tests` (from `backend/`).
+- Backend: `uv run pytest` and `uv run ruff check app tests evals` (from `backend/`).
   Interview tests: `backend/tests/test_interview_unit.py`; auth/parsing/chunking: `test_unit.py`.
 - Frontend: `npm run build` (type-check + bundle) and `npm run lint` (from `frontend/`).
 - **Prompts reference:** `docs/PROMPTS.md` lists every LLM prompt, generated from the source by
   `uv run python scripts/export_prompts.py` (from `backend/`, with `PYTHONPATH=.`). Re-run it after editing a prompt.
 - Behaviour checks are done by scripting real interviews over HTTP (answers spaced ~10-15 s
   apart, to stay realistic and under the free-tier per-minute limit).
+- **AI evals (`backend/evals/`, guide: `docs/EVALS.md`):** labelled datasets in `evals/data/`
+  run against the real code: `judgement` (interviewer's right/wrong call, 41 labelled answers),
+  `report` (score bands, stability, ranking, invented claims), `behaviour` (simulated
+  interviews checked for the coaching rules, no answers given, no calculations), `retrieval`
+  (question-bank search incl. uncovered subjects; free, no AI calls). Run from `backend/`:
+  `uv run python -m evals.run --suite all` (or one suite, `--limit N` for a smoke test). Needs
+  a Groq key (`CRACKIT_EVAL_GROQ_KEY` or `GROQ_API_KEY` in `.env`); results in
+  `evals/results/` (git-ignored); exit code 1 if a target is missed. The suites call the graph
+  NODE functions directly (no checkpointer/DB), so keep them importable and side-effect free.
+  Re-run the matching suite after changing a prompt, topic rules, the report or the bank.
 
 ## Gotchas (learned the hard way; keep these)
 
@@ -275,6 +285,15 @@ Production gotchas:
   sections, the model treated them as the syllabus and wrote SQL questions. Question-bank
   searches use `min_score=RELEVANT_SCORE` (0.65, measured in `rag/knowledge_base.py`); with no
   match the prompt says to use the subject's standard syllabus instead.
+- **Short topics also match section headings word for word** (`keyword_matches()` in
+  `rag/knowledge_base.py`, used by `search_with_scores()` / `search_knowledge_base()`). The
+  retrieval eval found "Transformers" (a suggested topic!) at 0.57, "network theorems" at 0.62
+  and "current transformers and potential transformers" never reaching the CT/PT section, so
+  those interviews got no question bank. Query rephrasing and title vectors didn't fix it
+  (covered vs uncovered scores only ~0.04 apart). Rule: a query of <= 6 content words matches
+  a section whose subject line + heading contain every one of them (heading matches first);
+  uncovered subjects share no heading words. Retrieval eval after: 100% found, 100% uncovered
+  rejected. Test: `test_short_topics_match_section_headings_but_uncovered_subjects_do_not`.
 - **"Fresher" means a graduate, not a beginner.** The old level text ("easy ... definitions")
   produced textbook one-liners for core subjects; it now asks for campus/PSU-level depth.
 - **Pitch questions like a real interview, everywhere.** `agents/common/levels.py` holds
