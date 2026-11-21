@@ -21,6 +21,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
+from app.agents.common.levels import REAL_QUESTION_STYLE, level_guide, level_label
 from app.agents.common.llm import get_structured_llm
 from app.agents.interview.prompts import (
     INTERVIEWER_PROMPT,
@@ -28,9 +29,8 @@ from app.agents.interview.prompts import (
     REPORT_PROMPT,
     SWITCH_PROMPT,
 )
-from app.rag.knowledge_base import get_rubrics, search_knowledge_base
+from app.rag.knowledge_base import RELEVANT_SCORE, get_rubrics, search_knowledge_base
 from app.schemas.interview import (
-    EXPERIENCE_LABEL,
     PERSONAS,
     InterviewerTurn,
     InterviewerTurnWithSwitch,
@@ -85,9 +85,12 @@ def prepare_node(state: InterviewState) -> dict:
         "behavioral teamwork motivation strengths" if cfg["interview_type"] == "hr" else "",
         state.get("context", "")[:600],
     ])) or "general interview questions"
-    docs = search_knowledge_base(query, k=4, doc_type="questions")
+    # Only sections that really match: for subjects the bank doesn't cover (e.g. power
+    # systems) a plain top-k returned unrelated software sections as the "reference".
+    docs = search_knowledge_base(query, k=4, doc_type="questions", min_score=RELEVANT_SCORE)
     kb = "\n\n".join(f"[{d.metadata['source']} / {d.metadata['topic']}]\n{d.page_content}"
-                     for d in docs)
+                     for d in docs) or (
+        "(none for this topic: ask what real interviews at this level ask about it)")
     # The clock does NOT start here: it starts when the candidate presses Start (begin()).
     # Starting it at creation expired interviews while people were still in the setup screen.
     return {"kb": kb, "messages": [], "deadline": None}
@@ -98,11 +101,12 @@ async def plan_node(state: InterviewState) -> dict:
     settings_text = (
         f"Type: {TYPE_LABEL[cfg['interview_type']]}\nTopic: {cfg.get('topic') or '-'}\n"
         f"Sub-topics: {', '.join(cfg.get('subtopics', [])) or '-'}\n"
-        f"Level: {EXPERIENCE_LABEL[cfg['experience']]}\nDuration: {cfg['duration_minutes']} min"
+        f"Level: {level_label(cfg['experience'])}\nDuration: {cfg['duration_minutes']} min"
     )
     llm = get_structured_llm(InterviewPlan, tier="fast")
     plan: InterviewPlan = await llm.ainvoke([
-        SystemMessage(PLAN_PROMPT),
+        SystemMessage(PLAN_PROMPT.format(level_guide=level_guide(cfg["experience"]),
+                                         question_style=REAL_QUESTION_STYLE)),
         HumanMessage(f"SETTINGS:\n{settings_text}\n\nCANDIDATE CONTEXT:\n"
                      f"{state.get('context') or '-'}\n\nQUESTION BANK:\n{state['kb']}"),
     ])
@@ -112,10 +116,10 @@ async def plan_node(state: InterviewState) -> dict:
 def opening_node(state: InterviewState) -> dict:
     cfg = state["config"]
     persona = _persona(state)
-    level = EXPERIENCE_LABEL[cfg["experience"]].lower()
+    level = level_label(cfg["experience"]).lower()
     text = (
         f"Hello, I'm {persona['name']}, and I'll be your interviewer today. This is a "
-        f"{cfg['duration_minutes']} minute {level} mock interview on {_subject(cfg)}. "
+        f"{cfg['duration_minutes']} minute mock interview on {_subject(cfg)}, at {level} level. "
         "Take your time with each answer, and speak naturally. To begin, please introduce "
         "yourself briefly."
     )
@@ -143,6 +147,34 @@ def route_after_listen(state: InterviewState) -> str:
 
 
 MISSES = {"incorrect", "unclear", "partially_correct"}
+
+# Replies that are not an attempt at the question. Told in the prompt to "reassure, don't
+# praise" after these, the fast model still said "Great effort!" to "I don't know" and
+# "That's a good start!" to "Can you just tell me the answer?" (scripted interview), which
+# sounds fake. So when moving on after one of these, code says a fixed, honest line instead.
+ASKED_FOR_ANSWER = re.compile(
+    r"\b(tell|give|say)\b.{0,15}\b(me|us)\b.{0,15}\banswer\b|\bwhat('?s| is) the (right |correct )?answer\b",
+    re.IGNORECASE)
+DONT_KNOW = re.compile(
+    r"\b(i )?(don'?t|do not) know\b|\bno idea\b|\bnot (really |very )?sure\b|\bno clue\b"
+    r"|\b(i )?can'?t (recall|remember)\b|\bskip (this|it|that)\b|\b(i'?ll|i will|let me) pass\b|^\s*pass\b",
+    re.IGNORECASE)
+_MOVE_ON = ["Let's try something different.", "Let's move to another area.", "Let's switch gears."]
+
+
+def non_answer_reaction(answer: str, turn_number: int) -> str | None:
+    """A fixed, honest reaction for moving on after a non-answer, or None for a real answer
+    (whose reaction the model writes). The answer is never given: the report has it.
+    Only short replies count, so a real answer that happens to say "not sure" stays the model's."""
+    text = answer.strip()
+    if len(text.split()) > 25:
+        return None
+    move_on = _MOVE_ON[turn_number % len(_MOVE_ON)]  # varied, so it doesn't sound canned
+    if ASKED_FOR_ANSWER.search(text):
+        return f"I'll leave that one for your feedback report, it has a model answer. {move_on}"
+    if DONT_KNOW.search(text):
+        return f"No worries, that one's worth revising later. {move_on}"
+    return None
 
 
 def thread_info(messages: list[dict]) -> tuple[str, int, list[str], int]:
@@ -195,18 +227,21 @@ def thread_rule(depth: int, misses: int) -> str:
     """Mandatory instructions, decided in code (the model alone kept digging into topics
     the candidate clearly didn't know)."""
     if misses >= MAX_MISSES:
-        return (f"\nThe candidate's last {misses} answers on this topic were wrong or unclear. "
-                "next_move MUST be new_topic now: give the correct idea in ONE short sentence, "
-                "kindly, then switch to a different focus area.")
+        return (f"\nThe candidate's last {misses} answers on this topic were wrong or unclear, "
+                "even after a hint. next_move MUST be new_topic now: encourage them warmly "
+                "WITHOUT giving the answer, then switch to a different focus area.")
     if depth >= MAX_FOLLOW_UPS:
         return (f"\nYou have already asked {depth} follow-ups on this thread: next_move MUST be "
                 "new_topic now. Briefly wrap up this point in your reaction, then switch.")
     if misses == MAX_MISSES - 1:
-        return ("\nThe candidate's previous answer on this topic was already wrong or unclear. "
-                "If this answer is ALSO incorrect, unclear or only partly correct, next_move MUST "
-                "be new_topic: give the correct idea in one short sentence and move on. Only "
-                "continue this thread if this answer is correct.")
-    return ""
+        return ("\nThe candidate already had a hint on this question. If this answer is ALSO "
+                "incorrect, unclear or only partly correct, next_move MUST be new_topic: "
+                "encourage them WITHOUT giving the answer and move on. Only continue this "
+                "thread if this answer is correct.")
+    # First miss on a question: hint and one guided retry (never the answer).
+    return ("\nIf this answer is incorrect, unclear or only partly correct, next_move MUST be "
+            "hint: a hint in your reaction (never the answer), then the same question again in "
+            "a guided form.")
 
 
 async def interviewer_node(state: InterviewState) -> dict:
@@ -235,13 +270,17 @@ async def interviewer_node(state: InterviewState) -> dict:
     async def ask() -> InterviewerTurn:
         rule = thread_rule(depth, misses)
         if misses == MAX_MISSES - 1:  # struggling: draft the switch now, avoiding a 2nd call
-            rule += ("\nALSO fill switch_reaction (the correct idea in one short sentence, then "
-                     "'Let's move on.') and switch_question (ONE simple, basic question about "
-                     f"'{target}', a single idea). They are used if you have to move on.")
+            rule += ("\nALSO fill switch_reaction (warm and WITHOUT the answer: credit only what "
+                     "they really got right; after 'I don't know' reassure instead of praising; "
+                     "if they asked for the answer, say it will be in their feedback report; then "
+                     "a transition like 'Let's try something different.') and switch_question (ONE clear, concrete question about "
+                     f"'{target}' at the candidate's level: a single idea, never a definition or a calculation). "
+                     "They are used if you have to move on.")
         system = INTERVIEWER_PROMPT.format(
             name=persona["name"], style=persona["style"], title=plan["title"],
             interview_type=TYPE_LABEL[cfg["interview_type"]],
-            experience=EXPERIENCE_LABEL[cfg["experience"]],
+            experience=level_label(cfg["experience"]),
+            level_guide=level_guide(cfg["experience"]), question_style=REAL_QUESTION_STYLE,
             focus_areas="; ".join(plan["focus_areas"]), covered=", ".join(covered) or "none yet",
             thread=thread, depth=depth, thread_rule=rule,
             remaining=remaining_seconds(state), kb=kb, context=state.get("context") or "-",
@@ -255,7 +294,8 @@ async def interviewer_node(state: InterviewState) -> dict:
         question as a new topic). An explicit target leaves it nothing to drift back to."""
         system = SWITCH_PROMPT.format(
             name=persona["name"], style=persona["style"],
-            experience=EXPERIENCE_LABEL[cfg["experience"]], current=thread, target=target, kb=kb,
+            experience=level_label(cfg["experience"]), current=thread, target=target, kb=kb,
+            level_guide=level_guide(cfg["experience"]),
         )
         turn = await llm.ainvoke([SystemMessage(system), human])
         turn.next_move, turn.focus_area = "new_topic", target
@@ -273,7 +313,14 @@ async def interviewer_node(state: InterviewState) -> dict:
                 turn.next_move, turn.focus_area = "new_topic", target
             elif turn.next_move != "new_topic":
                 turn = await switch_topic()
-    spoken = f"{turn.reaction.strip()} {turn.question.strip()}".strip()
+    # Moving on because they're stuck, after a non-answer: an honest fixed line (see above).
+    last = state["messages"][-1]
+    # Any verdict but "correct": "tell me the answer" is sometimes judged not_applicable.
+    if turn.next_move == "new_topic" and turn.assessment != "correct" and last["role"] == "candidate":
+        fixed = non_answer_reaction(last["text"], len(state["messages"]))
+        if fixed:
+            turn.reaction = fixed
+    spoken =f"{turn.reaction.strip()} {turn.question.strip()}".strip()
     msg = {"role": "interviewer", "text": spoken,
            "kind": "question" if turn.next_move == "new_topic" else "follow_up",
            "focus_area": turn.focus_area, "next_move": turn.next_move}
@@ -338,7 +385,7 @@ async def build_report(state: InterviewState) -> dict:
         SystemMessage(REPORT_PROMPT.format(rubrics=get_rubrics())),
         HumanMessage(
             f"Interview: {state['plan']['title']} ({TYPE_LABEL[cfg['interview_type']]}), "
-            f"level {EXPERIENCE_LABEL[cfg['experience']]}.\n\nMEASURED COMMUNICATION METRICS: "
+            f"level {level_label(cfg['experience'])}.\n\nMEASURED COMMUNICATION METRICS: "
             f"{ {k: v for k, v in metrics.items() if k != 'per_answer'} }\n\n"
             "TRANSCRIPT:\n" + "\n".join(numbered)
         ),

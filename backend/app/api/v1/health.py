@@ -1,6 +1,6 @@
 """Health check: confirms the API can reach every service it depends on."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy import text
 
@@ -11,7 +11,7 @@ router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
-async def health(db: DbSession) -> dict:
+async def health(db: DbSession, response: Response) -> dict:
     checks: dict[str, str] = {}
 
     try:
@@ -28,7 +28,8 @@ async def health(db: DbSession) -> dict:
     except Exception as exc:  # noqa: BLE001
         checks["qdrant"] = f"error: {exc.__class__.__name__}"
 
-    checks["groq_key"] = "set" if settings.groq_api_key else "missing"
-
     healthy = checks["postgres"] == "ok" and checks["qdrant"] == "ok"
+    # 503 when degraded: uptime monitors (and Docker's healthcheck) look at the status code,
+    # and this used to answer 200 even with the database down, so nothing would ever alert.
+    response.status_code = 200 if healthy else 503
     return {"status": "ok" if healthy else "degraded", "checks": checks}

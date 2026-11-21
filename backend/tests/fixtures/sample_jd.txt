@@ -1,0 +1,28 @@
+Senior Backend Engineer - Payments Platform (fictional posting for tests)
+Company: Ledgerly (Bengaluru, hybrid)
+
+About the role
+You will design and scale the services that move money for millions of users. You will own
+APIs end to end, from design to on-call, and work closely with product and data teams.
+
+Responsibilities
+- Design, build and operate high-throughput microservices for payment processing
+- Build and maintain RESTful APIs consumed by web and mobile clients
+- Optimise database performance and data models for transactional workloads
+- Improve CI/CD pipelines and release reliability
+- Mentor junior engineers and review code
+
+Requirements
+- 3+ years of professional backend development experience
+- Strong Python; experience with FastAPI or Django
+- Solid SQL skills and experience with PostgreSQL
+- Experience building REST APIs
+- Docker and Kubernetes in production
+- Event streaming with Apache Kafka
+- Cloud experience, preferably AWS
+
+Nice to have
+- Redis or other caching layers
+- Go
+- Terraform / infrastructure as code
+- Experience in fintech or payments

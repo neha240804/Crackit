@@ -3,20 +3,24 @@
 import logging
 import time
 import uuid
+from datetime import UTC, datetime
 
-import groq
 from fastapi import HTTPException, UploadFile, status
 from langgraph.types import Command
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.common.errors import ai_http_error
 from app.agents.interview import runtime
 from app.agents.interview.graph import answered_pairs, build_report, remaining_seconds
 from app.agents.profile.sources import build_sources, format_sources
+from app.core.config import settings
 from app.db.models import InterviewSession, InterviewTurn, JobDescription, Resume, User
+from app.db.session import release_connection
 from app.schemas.interview import (
     PERSONAS,
     InterviewConfig,
+    InterviewFeedbackIn,
     InterviewSessionOut,
     InterviewSummaryOut,
     InterviewTurnOut,
@@ -31,17 +35,9 @@ logger = logging.getLogger(__name__)
 
 
 def _ai_error(exc: Exception, session: InterviewSession) -> HTTPException:
-    """Turn an AI failure into an honest message, and log the real exception. (A blanket
-    "rate limit" message once hid a schema bug: the cause never reached the logs.)"""
-    logger.exception("Interview %s: interviewer step failed", session.id)
-    cause = exc
-    while cause.__cause__ is not None and not isinstance(cause, groq.RateLimitError):
-        cause = cause.__cause__
-    if isinstance(cause, groq.RateLimitError):
-        return HTTPException(503, "The AI interviewer is busy right now (free-tier rate limit). "
-                                  "Wait a few seconds and answer again.")
-    return HTTPException(502, f"The AI interviewer hit an error ({exc.__class__.__name__}). "
-                              "Please answer again.")
+    """Honest message (own key vs shared key, rate limit vs error); the real cause is logged.
+    (A blanket "rate limit" message once hid a schema bug: the cause never reached the logs.)"""
+    return ai_http_error(exc, f"The AI interviewer (interview {session.id})")
 
 
 def _cfg(session: InterviewSession) -> dict:
@@ -56,7 +52,10 @@ async def _primary_or_given_resume(db: AsyncSession, user: User, resume_id) -> R
         if resume is None or resume.user_id != user.id:
             raise HTTPException(404, "Resume not found")
         return resume
-    return await db.scalar(select(Resume).where(Resume.user_id == user.id, Resume.is_primary))
+    # Only resumes uploaded for interviews: the ATS checker's list is separate on purpose.
+    return await db.scalar(select(Resume).where(
+        Resume.user_id == user.id, Resume.purpose == "interview", Resume.is_primary
+    ))
 
 
 def _context(config: InterviewConfig, resume: Resume | None) -> str:
@@ -71,6 +70,14 @@ def _context(config: InterviewConfig, resume: Resume | None) -> str:
     return "\n\n".join(parts)
 
 
+def _voice(text: str, interviewer: str, stream: str) -> dict:
+    """How the room voices this line. Browser voice (the default): the server does nothing.
+    Server voice: start generating now, before the browser asks for it."""
+    if settings.tts_engine == "browser":
+        return {"voice": "browser", "speech_chunks": []}
+    return {"voice": "server", "speech_chunks": tts.presynthesize(text, interviewer, stream)}
+
+
 def _turn_out(
     values: dict, interrupted: dict | None, transcript: str | None = None, stream: str = "default"
 ) -> InterviewTurnOut:
@@ -79,12 +86,11 @@ def _turn_out(
         return InterviewTurnOut(utterance=interrupted["utterance"], kind=interrupted["kind"],
                                 done=False, remaining_seconds=remaining_seconds(values),
                                 transcript=transcript,
-                                # start generating the voice now, before the browser asks
-                                speech_chunks=tts.presynthesize(interrupted["utterance"], interviewer, stream))
+                                **_voice(interrupted["utterance"], interviewer, stream))
     last = values["messages"][-1]  # graph finished: the closing line
     return InterviewTurnOut(utterance=last["text"], kind=last["kind"], done=True,
                             remaining_seconds=0, transcript=transcript,
-                            speech_chunks=tts.presynthesize(last["text"], interviewer, stream))
+                            **_voice(last["text"], interviewer, stream))
 
 
 def _interrupt_value(out: dict) -> dict | None:
@@ -120,8 +126,7 @@ async def start(db: AsyncSession, user: User, config: InterviewConfig) -> Interv
     except Exception as exc:
         await db.delete(session)
         await db.commit()
-        raise HTTPException(502, f"Could not start the interview ({exc.__class__.__name__}). "
-                                 "Please try again.") from exc
+        raise ai_http_error(exc, "Starting the interview") from exc
 
     session.config = {**session.config, "title": out["plan"]["title"]}
     await db.commit()
@@ -133,6 +138,17 @@ async def _get_session(db: AsyncSession, user: User, session_id: uuid.UUID) -> I
     if session is None or session.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Interview not found")
     return session
+
+
+async def save_feedback(
+    db: AsyncSession, user: User, session_id: uuid.UUID, feedback: InterviewFeedbackIn
+) -> None:
+    """Store (or replace) the candidate's rating of this interview."""
+    session = await _get_session(db, user, session_id)
+    comment = (feedback.comment or "").strip() or None
+    session.user_feedback = {"rating": feedback.rating, "comment": comment,
+                             "at": datetime.now(UTC).isoformat(timespec="seconds")}
+    await db.commit()
 
 
 async def _ensure_waiting(session: InterviewSession) -> tuple:
@@ -176,6 +192,7 @@ async def transcribe_only(
     after ~1 s of silence, so the text is ready when the 2 s auto-submit fires (if the
     candidate keeps talking, the browser just discards it)."""
     session = await _get_session(db, user, session_id)
+    await release_connection(db)  # don't hold a DB connection during Whisper
     data = await audio.read()
     if len(data) > MAX_AUDIO_BYTES:
         raise HTTPException(413, "Recording is too long")
@@ -184,7 +201,7 @@ async def transcribe_only(
     try:
         text, duration = await stt.transcribe(data, audio.filename or "answer.webm", vocab)
     except Exception as exc:
-        raise HTTPException(502, f"Speech recognition failed ({exc.__class__.__name__})") from exc
+        raise ai_http_error(exc, "Speech recognition") from exc
     return TranscriptOut(text=text, duration_sec=duration)
 
 
@@ -194,6 +211,7 @@ async def answer(
 ) -> InterviewTurnOut:
     session = await _get_session(db, user, session_id)
     pending = await _ensure_waiting(session)
+    await release_connection(db)  # Whisper + the interviewer LLM can take seconds
 
     if audio is not None:
         data = await audio.read()
@@ -204,7 +222,7 @@ async def answer(
         try:
             text, duration_sec = await stt.transcribe(data, audio.filename or "answer.webm", vocab)
         except Exception as exc:
-            raise HTTPException(502, f"Speech recognition failed ({exc.__class__.__name__})") from exc
+            raise ai_http_error(exc, "Speech recognition") from exc
     text = (text or "").strip()
     if not text:
         raise HTTPException(422, "We couldn't hear an answer. Please try speaking again.")
@@ -257,11 +275,11 @@ async def report(db: AsyncSession, user: User, session_id: uuid.UUID) -> dict:
     if session.status != "completed":
         raise HTTPException(409, "Finish the interview first")
     values = (await runtime.get_graph().aget_state(_cfg(session))).values
+    await release_connection(db)  # the report LLM call is the slowest one (~10-30 s)
     try:
         result = await build_report(values)
     except Exception as exc:
-        raise HTTPException(502, f"Report generation failed ({exc.__class__.__name__}). "
-                                 "Please retry.") from exc
+        raise ai_http_error(exc, "Report generation") from exc
 
     # Also store each answered question as a row: queryable history beyond the JSON report.
     feedback = {q["question_index"]: q for q in result["questions"]}

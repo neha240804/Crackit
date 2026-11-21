@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from 'react'
 
+import { activateGroqKey, deactivateGroqKey } from '@/features/account/groqKey'
 import { api, LOGOUT_EVENT, tokenStore } from '@/lib/api'
 import type { TokenResponse, User } from '@/lib/types'
 
@@ -32,7 +33,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     staleTime: Infinity, // the user's name/email rarely change during a session
   })
 
+  // Unlock this user's own Groq key (kept encrypted in this browser) once they are known.
+  useEffect(() => {
+    if (user) void activateGroqKey(user.id)
+  }, [user])
+
   const logout = useCallback(() => {
+    deactivateGroqKey() // drop the decrypted key from memory; the encrypted copy stays for next login
     tokenStore.clear()
     setToken(null)
     queryClient.clear() // drop every cached response that belonged to this user

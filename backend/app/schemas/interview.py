@@ -2,12 +2,13 @@
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
+
+from app.agents.common.levels import Level, normalize_level
 
 InterviewType = Literal["topic", "resume", "jd", "hr"]
-Experience = Literal["fresher", "1-3", "3-5", "5+"]
 
 # Our own interviewer personas (names + style only; no real people's likenesses).
 PERSONAS: dict[str, dict[str, str]] = {
@@ -16,21 +17,25 @@ PERSONAS: dict[str, dict[str, str]] = {
     "sara": {"name": "Sara", "style": "calm, structured and friendly; HR-style conversation"},
 }
 
-EXPERIENCE_LABEL = {
-    "fresher": "Fresher", "1-3": "1-3 years", "3-5": "3-5 years", "5+": "5+ years",
-}
-
-
 # ---------------------------------------------------------------- API input
 class InterviewConfig(BaseModel):
     interview_type: InterviewType
     topic: str | None = Field(None, max_length=120, description="Domain/role, e.g. 'Bias-Variance'")
-    subtopics: list[str] = Field(default_factory=list, max_length=10)
-    experience: Experience = "fresher"
+    # Limit the length of each item too, not just how many: these go into every prompt, so
+    # an unbounded string would inflate token use (and cost) on every interviewer turn.
+    subtopics: list[Annotated[str, StringConstraints(max_length=120)]] = Field(default_factory=list, max_length=10)
+    # The question difficulty (easy / intermediate / hard). Still called `experience` so saved
+    # interviews and the API stay compatible; old values ("fresher", "1-3"...) are mapped.
+    experience: Level = "intermediate"
     duration_minutes: Literal[5, 10, 15] = 5
     interviewer: Literal["maya", "arjun", "sara"] = "maya"
     resume_id: uuid.UUID | None = None  # resume / jd types; defaults to the primary resume
     jd_text: str | None = Field(None, max_length=20_000)
+
+    @field_validator("experience", mode="before")
+    @classmethod
+    def legacy_level(cls, value):
+        return normalize_level(value)
 
     @model_validator(mode="after")
     def check_required_fields(self):
@@ -44,9 +49,11 @@ class InterviewConfig(BaseModel):
 # ---------------------------------------------------------------- LLM outputs
 class InterviewPlan(BaseModel):
     focus_areas: list[str] = Field(
-        description="4-6 areas to cover, in order, from fundamentals to applied. Short labels."
+        description="4-6 specific, interview-worthy themes to cover, in order; never vague "
+                    "areas like basics or fundamentals. Short labels."
     )
-    title: str = Field(description="Short display title for this interview, max 6 words")
+    title: str = Field(description="Short display title for this interview, max 6 words, "
+                                   "naming the topic (no words like Basics or Fundamentals)")
 
 
 class InterviewerTurn(BaseModel):
@@ -56,7 +63,9 @@ class InterviewerTurn(BaseModel):
     reaction: str = Field(
         description="1-2 short spoken sentences reacting specifically to what the candidate said"
     )
-    next_move: Literal["dig_deeper", "clarify", "correct_and_probe", "new_topic"]
+    # "hint" replaced "correct_and_probe": the interviewer no longer corrects by giving the
+    # answer; it hints and lets the candidate retry the same question once.
+    next_move: Literal["dig_deeper", "clarify", "hint", "new_topic"]
     question: str = Field(description="Exactly ONE spoken question, max 35 words")
     focus_area: str = Field(description="Focus area this question belongs to (reuse the exact "
                                         "label when staying on the same thread)")
@@ -71,8 +80,10 @@ class InterviewerTurnWithSwitch(InterviewerTurn):
     replies that left them out (HTTP 400 json_validate_failed), which broke a live interview.
     """
 
-    switch_reaction: str = Field(description="Correct idea in one short sentence + transition")
-    switch_question: str = Field(description="ONE simple question about the next topic")
+    switch_reaction: str = Field(description="Warm encouragement WITHOUT giving the answer, "
+                                             "then a transition to the next topic")
+    switch_question: str = Field(description="ONE clear, concrete question about the next "
+                                             "topic, at the candidate's level (not a definition)")
 
 
 class QuestionFeedback(BaseModel):
@@ -103,6 +114,13 @@ class Message(BaseModel):
     duration_sec: float | None = None
 
 
+class InterviewFeedbackIn(BaseModel):
+    """How the interview felt, asked as it ends: an emoji scale, 1 (bad) to 5 (great)."""
+
+    rating: int = Field(ge=1, le=5)
+    comment: str | None = Field(None, max_length=1000)
+
+
 class InterviewTurnOut(BaseModel):
     """What the client needs after each step."""
 
@@ -112,7 +130,11 @@ class InterviewTurnOut(BaseModel):
     remaining_seconds: int
     transcript: str | None = None  # the candidate's transcribed answer (on /answer)
     # The utterance split for the voice (already being generated on the server, in order).
+    # Empty with the browser voice: the server voices nothing.
     speech_chunks: list[str] = []
+    # Which voice the room uses for this line: the student's browser voice, or the server
+    # voice (/tts). From settings.tts_engine, so the whole interview keeps one voice.
+    voice: Literal["browser", "server"] = "browser"
 
 
 class TranscriptOut(BaseModel):

@@ -1,0 +1,118 @@
+{
+  "_about": "Interview transcripts with the score band an experienced interviewer would give. overall = expected overall_score range (0-100). per_question = limits on single question scores (0-10), by answer number. order = pairs that must rank (first scores higher than second). Durations are computed at ~130 words per minute unless given.",
+  "transcripts": [
+    {
+      "id": "machines-strong",
+      "type": "topic", "topic": "Induction motors", "level": "intermediate", "title": "Induction Motor Starting",
+      "qa": [
+        ["Why does an induction motor always run slightly below synchronous speed?",
+         "If the rotor ran at synchronous speed there would be no relative motion between the rotating field and the rotor bars, so no EMF, no rotor current and no torque. So it always slips, typically two to five percent at full load, and the slip increases with load."],
+        ["Why would you use a star-delta starter on a large motor, and what do you give up?",
+         "Starting in star gives each winding one over root three of the line voltage, so the starting current falls to about a third compared with direct-on-line, which avoids a big voltage dip. The trade-off is that starting torque also drops to a third, so it only suits light starting loads like pumps and fans, and there's a current spike at the changeover to delta."],
+        ["When would you choose a VFD over a star-delta starter?",
+         "When the load needs speed control or a smooth start under load, like a conveyor or a pump where we want to save energy at part load. A VFD gives full torque at low speed and a soft ramp, but it costs more and injects harmonics, so I'd check whether filters are needed."],
+        ["A motor keeps tripping on overload a few seconds after starting. What do you check first?",
+         "First the load: whether it's jammed or the starting load has increased. Then the supply: a single-phasing fault or low voltage makes the current rise. Then the overload relay setting against the nameplate current, and finally the winding insulation with a megger and the bearings."]
+      ],
+      "overall": [70, 95],
+      "per_question": {"1": {"min": 7}, "2": {"min": 7}, "3": {"min": 6}, "4": {"min": 7}}
+    },
+    {
+      "id": "machines-average",
+      "type": "topic", "topic": "Induction motors", "level": "intermediate", "title": "Induction Motor Starting",
+      "qa": [
+        ["Why does an induction motor always run slightly below synchronous speed?",
+         "Because if it ran at synchronous speed there would be no induced current in the rotor, so no torque."],
+        ["Why would you use a star-delta starter on a large motor, and what do you give up?",
+         "Um, to reduce the starting current, like, so the supply doesn't dip."],
+        ["When would you choose a VFD over a star-delta starter?",
+         "A VFD is basically used when the motor is very big, it's more powerful than star-delta."],
+        ["A motor keeps tripping on overload a few seconds after starting. What do you check first?",
+         "I would check the overload relay setting and whether the load is too high."]
+      ],
+      "overall": [40, 70],
+      "per_question": {"3": {"max": 4}}
+    },
+    {
+      "id": "machines-weak",
+      "type": "topic", "topic": "Induction motors", "level": "intermediate", "title": "Induction Motor Starting",
+      "qa": [
+        ["Why does an induction motor always run slightly below synchronous speed?",
+         "Because of friction, um, the friction in the bearings slows it down."],
+        ["Why would you use a star-delta starter on a large motor, and what do you give up?",
+         "I'm not sure, I don't know."],
+        ["When would you choose a VFD over a star-delta starter?",
+         "Like, when you want more voltage, I think."],
+        ["A motor keeps tripping on overload a few seconds after starting. What do you check first?",
+         "I would replace the motor."]
+      ],
+      "overall": [0, 35],
+      "per_question": {"1": {"max": 3}, "2": {"max": 2}, "3": {"max": 3}, "4": {"max": 4}}
+    },
+    {
+      "id": "one-word-answers",
+      "type": "topic", "topic": "Transformers", "level": "easy", "title": "Transformer Fundamentals in Practice",
+      "qa": [
+        ["Why is a transformer rated in kVA and not in kW?", "Power factor."],
+        ["Why is the core laminated?", "Losses."],
+        ["What happens if a CT secondary is left open?", "Not sure."]
+      ],
+      "overall": [0, 30],
+      "per_question": {"3": {"max": 2}}
+    },
+    {
+      "id": "hr-strong",
+      "type": "hr", "topic": null, "level": "easy", "title": "HR and Behavioral Round",
+      "qa": [
+        ["Tell me about yourself.",
+         "I'm Priya, a final-year electrical engineering student. My project is a monitoring system for a solar plant's inverters, where I wrote the data logging and built a dashboard that flags faults. Last summer I interned at a distribution company, testing meters and helping with feeder maintenance, which is where I got interested in field work. I'm looking for a graduate trainee role where I can learn on site."],
+        ["Tell me about a time you disagreed with a teammate. What did you do?",
+         "In our project my teammate wanted to build the dashboard first, but I thought the data logging had to come first because everything depended on it. I suggested we list what each part needed, and it showed the dashboard would be blocked without data. We agreed to do logging first, and I helped with the dashboard mock-ups in parallel. We finished on time, and I learned to settle disagreements with facts, not opinions."],
+        ["Are you comfortable being posted to a remote site?",
+         "Yes. During my internship I travelled to substations outside the city every week, and I enjoyed seeing the equipment I'd studied. Early in my career I think site experience is the fastest way to learn, so I'd see a remote posting as an opportunity."]
+      ],
+      "overall": [65, 95],
+      "per_question": {"2": {"min": 7}}
+    },
+    {
+      "id": "hr-weak",
+      "type": "hr", "topic": null, "level": "easy", "title": "HR and Behavioral Round",
+      "qa": [
+        ["Tell me about yourself.", "I am a hardworking person, I am honest and I like to learn new things."],
+        ["Tell me about a time you disagreed with a teammate. What did you do?", "I always get along with everyone, so there were no disagreements."],
+        ["Are you comfortable being posted to a remote site?", "Um, I prefer to stay in my city actually, but maybe."]
+      ],
+      "overall": [10, 50],
+      "per_question": {"2": {"max": 4}}
+    },
+    {
+      "id": "sql-mixed",
+      "type": "topic", "topic": "SQL", "level": "intermediate", "title": "SQL for Applications",
+      "qa": [
+        ["When could adding an index make things slower overall?",
+         "Every insert, update and delete has to update the index as well, so on a write-heavy table the extra work can outweigh faster reads. And on a column with very few distinct values the planner may scan the table anyway, so the index just costs space."],
+        ["What happens when two transactions update the same row at the same time?",
+         "I don't know that one."],
+        ["Users see stale data after an update. Where would you look?",
+         "Maybe the cache? Like, the old data is still in the cache."]
+      ],
+      "overall": [30, 65],
+      "per_question": {"1": {"min": 7}, "2": {"max": 2}}
+    },
+    {
+      "id": "ml-strong",
+      "type": "topic", "topic": "Machine learning", "level": "intermediate", "title": "Machine Learning in Practice",
+      "qa": [
+        ["Your model has 99 percent training accuracy and 70 percent on the test set. What's happening, and what would you try?",
+         "That gap means it's overfitting: it has learned the training data's noise rather than general patterns. I'd first check for leakage and that the split is right, then try regularisation, a simpler model or early stopping, add data or augmentation, and use cross-validation to compare fairly."],
+        ["When is accuracy a misleading metric?",
+         "With imbalanced classes. If only one percent of transactions are fraud, a model that always says not fraud is 99 percent accurate and useless. I'd look at precision, recall and the F1 score, or the precision-recall curve, and pick the threshold from the cost of each error."],
+        ["Why do we scale features before k-nearest neighbours but usually not before a decision tree?",
+         "KNN uses distances, so a feature with a big range like income dominates one like age unless you scale them. A tree splits one feature at a time on thresholds, so the scale doesn't change which split is best."]
+      ],
+      "overall": [70, 95],
+      "per_question": {"1": {"min": 7}, "2": {"min": 7}, "3": {"min": 7}}
+    }
+  ],
+  "order": [["machines-strong", "machines-average"], ["machines-average", "machines-weak"], ["hr-strong", "hr-weak"], ["ml-strong", "sql-mixed"]]
+}

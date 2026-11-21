@@ -1,4 +1,4 @@
-# Infrastructure for MockInterview AI: Postgres + Qdrant.
+# Infrastructure for Crackit (repo: MockInterviewAI): Postgres + Qdrant.
 # Ports differ from CareerPilot AI (5433/6333) so both projects can run at the same time.
 
 services:

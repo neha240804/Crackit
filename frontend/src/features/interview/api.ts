@@ -81,6 +81,14 @@ export function endInterview(id: string) {
   return api<InterviewTurn>(`/interviews/${id}/end`, { method: 'POST' }).then(withDeadline)
 }
 
+/** The candidate's emoji rating (1-5) of the interview, plus an optional comment. */
+export function sendInterviewFeedback(id: string, rating: number, comment: string) {
+  return api<void>(`/interviews/${id}/feedback`, {
+    method: 'POST',
+    json: { rating, comment: comment.trim() || null },
+  })
+}
+
 export function useReport(id: string, enabled: boolean) {
   return useQuery({
     queryKey: ['interview-report', id],

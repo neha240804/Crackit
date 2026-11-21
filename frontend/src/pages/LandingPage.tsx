@@ -1,82 +1,75 @@
-// Public landing page (light). Logged-in visitors go straight to the dashboard.
+// Public landing page. Goal: within five seconds a visitor knows what Crackit is (a free
+// interview coach), the three tools it offers, and where to start. Worded as a general
+// mock-interview site on purpose (product decision): no field is named, topics are just examples.
+//   hero (what it is + all three tools) → the three tools → how a mock interview works →
+//   what the interviewer does → the report → interviewers → one closing call to action.
+// Logged-in visitors go straight to the dashboard.
 
-import {
-  ArrowRight,
-  BadgeCheck,
-  BriefcaseBusiness,
-  Captions,
-  FileText,
-  GitBranch,
-  MessageSquareQuote,
-  Mic,
-  Sparkles,
-  Timer,
-  Users,
-} from 'lucide-react'
+import { ArrowRight, AudioLines, Captions, Check, Gauge, Layers, MessageSquareQuote, Route } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link, Navigate } from 'react-router'
 
-import { Logo } from '@/components/Brand'
+import { Avatar, Logo } from '@/components/Brand'
+import { Card, Eyebrow } from '@/components/ui'
+import { buttonClass } from '@/components/ui/styles'
 import { useAuth } from '@/features/auth/context'
-import { INTERVIEWERS } from '@/features/interview/constants'
+import { FORMAT_TONE, INTERVIEWERS } from '@/features/interview/constants'
+import { TOOLS } from '@/features/product'
 import { cn } from '@/lib/utils'
 
-const FEATURES: { icon: typeof Mic; title: string; text: string }[] = [
-  { icon: Mic, title: 'A real voice conversation', text: 'The interviewer speaks, listens and replies naturally. Just answer out loud; pausing for two seconds hands the turn back.' },
-  { icon: MessageSquareQuote, title: 'Reactions to what you said', text: 'Correct answers get specific credit, mistakes get a one-line correction. No generic "thank you" after every answer.' },
-  { icon: GitBranch, title: 'Follow-ups like a real interviewer', text: 'Strong answers lead to deeper questions; if you are stuck, the interviewer explains and moves on, as a real one would.' },
-  { icon: Captions, title: 'Live captions', text: 'See your words appear as you speak, and the interviewer’s words as they are said.' },
-  { icon: BadgeCheck, title: 'Detailed feedback report', text: 'Scores per question, what was good, what was missing, a model answer, and your speaking pace and filler words.' },
-  { icon: Timer, title: 'Time-boxed sessions', text: '5, 10 or 15 minutes. Refresh by accident? The interview picks up exactly where you left off.' },
+// What makes the mock interview feel real (the tools section already covers prep and ATS).
+const FEATURES: { icon: typeof AudioLines; title: string; text: string }[] = [
+  { icon: AudioLines, title: 'Spoken, not typed', text: 'Answer out loud, the way you will on the day. When you finish, the interviewer picks it up from there.' },
+  { icon: MessageSquareQuote, title: 'It responds to you', text: 'Credit where you were right, a hint where you were not, so you work it out yourself. Never a generic "thank you".' },
+  { icon: Route, title: 'Follow-ups with intent', text: 'Strong answers lead deeper. When you are stuck, it gives you a nudge, then moves on.' },
+  { icon: Layers, title: 'Four formats', text: 'Any topic, your own resume, a specific job post, or the HR round, at your level.' },
+  { icon: Captions, title: 'Live captions', text: 'Your words appear as you speak; the interviewer’s appear as they are said.' },
+  { icon: Gauge, title: 'Feedback you can use', text: 'Scores for every question, a model answer, and your pace and filler words, measured.' },
 ]
 
-const TYPES: { icon: typeof Mic; title: string; text: string }[] = [
-  { icon: Sparkles, title: 'Any topic', text: 'Machine learning, React, SQL, system design… you choose.' },
-  { icon: FileText, title: 'Your resume', text: 'Questions about your own projects and experience.' },
-  { icon: BriefcaseBusiness, title: 'A job description', text: 'Paste a posting and practise for that role.' },
-  { icon: Users, title: 'HR & behavioral', text: 'Introductions, teamwork, challenges, scored on STAR.' },
+// Quiet tones cycled across feature icons (sage, clay, mist, honey).
+const TONES = Object.values(FORMAT_TONE).map((t) => t.chip)
+
+const STEPS = [
+  ['Choose', 'Pick a topic, your resume, a job post or the HR round. Set the level, the length and who interviews you.'],
+  ['Converse', 'The interviewer asks, listens and follows up on what you said. Just speak naturally; a short pause hands the turn back.'],
+  ['Review', 'Read a clear report: what was strong, what was missing, and what a great answer would have covered.'],
 ]
 
-function Section({ id, eyebrow, title, children }: { id?: string; eyebrow: string; title: string; children: ReactNode }) {
-  return (
-    <section id={id} className="mx-auto max-w-6xl px-6 py-20">
-      <p className="text-sm font-semibold tracking-wide text-brand-600 uppercase">{eyebrow}</p>
-      <h2 className="mt-2 max-w-2xl text-3xl font-semibold tracking-tight">{title}</h2>
-      <div className="mt-10">{children}</div>
-    </section>
-  )
+function Container({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return <div className={`mx-auto w-full max-w-6xl px-6 sm:px-8 ${className}`}>{children}</div>
 }
 
-/** A static preview of a conversation, built in HTML (no screenshots). */
-function ConversationPreview() {
+/** The product, shown as a quiet transcript card rather than a screenshot. */
+function TranscriptPreview() {
   return (
-    <div className="relative">
-      <div className="absolute -inset-6 -z-10 rounded-[2rem] bg-gradient-to-br from-brand-200/60 via-accent-500/10 to-transparent blur-2xl" />
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0b1020] p-5 text-sm text-white shadow-2xl">
-        <div className="mb-4 flex items-center justify-between text-xs text-ink-400">
-          <span className="flex items-center gap-2"><span className="size-2 animate-pulse rounded-full bg-emerald-400" /> Live interview · Bias-Variance</span>
-          <span className="rounded-full border border-white/15 px-2 py-0.5 tabular-nums">7:42</span>
+    <Card className="overflow-hidden shadow-lift">
+      <div className="flex items-center justify-between border-b border-ink-200 px-5 py-3.5 text-xs text-ink-500">
+        <span className="flex items-center gap-2"><span className="size-1.5 animate-pulse rounded-full bg-brand-600" /> Live · Resume-based · Intermediate</span>
+        <span className="tabular-nums">07:42</span>
+      </div>
+      {/* A resume-based exchange: it fits any field, and project questions are the most asked. */}
+      <div className="space-y-5 px-5 py-6 text-[0.94rem] leading-relaxed">
+        <div>
+          <p className="mb-1 text-[11px] font-medium tracking-[0.12em] text-ink-400 uppercase">Arjun</p>
+          <p className="text-ink-900">You mentioned your final-year project cut processing time in half. What was the bottleneck, and how did you find it?</p>
         </div>
-        <div className="space-y-3">
-          <div className="rounded-xl bg-brand-500/20 px-3 py-2">
-            <p className="text-[10px] font-medium tracking-wide text-ink-400 uppercase">Arjun · interviewer</p>
-            Your model scores 99% on training data but 80% on test data. What is going on?
-          </div>
-          <div className="ml-8 rounded-xl bg-white/[0.07] px-3 py-2">
-            <p className="text-[10px] font-medium tracking-wide text-ink-400 uppercase">You</p>
-            That gap means it’s overfitting: low bias but high variance. I’d add regularisation or more data…
-          </div>
-          <div className="rounded-xl bg-brand-500/20 px-3 py-2">
-            <p className="text-[10px] font-medium tracking-wide text-ink-400 uppercase">Arjun · speaking</p>
-            Right, that’s high variance. How would a learning curve confirm it?
-          </div>
+        <div className="border-l-2 border-brand-200 pl-4">
+          <p className="mb-1 text-[11px] font-medium tracking-[0.12em] text-ink-400 uppercase">You</p>
+          <p className="text-ink-700">We timed each stage and saw most of the time went into reading the same data again and again. So we loaded it once and cached it, which took a run from forty minutes to under twenty.</p>
         </div>
-        <div className="mt-4 flex flex-wrap gap-2 text-xs">
-          <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-emerald-300">✓ Correct diagnosis</span>
-          <span className="rounded-full bg-white/10 px-2.5 py-1 text-ink-200">132 wpm · 1 filler word</span>
+        <div>
+          <p className="mb-1 flex items-center gap-2 text-[11px] font-medium tracking-[0.12em] text-ink-400 uppercase">
+            Arjun <span className="flex items-end gap-0.5" aria-hidden>{[3, 6, 4].map((h, i) => <span key={i} className="w-0.5 rounded-full bg-brand-500" style={{ height: h * 2 }} />)}</span>
+          </p>
+          <p className="text-ink-900">Nice, you measured before changing anything. What did caching cost you?</p>
         </div>
       </div>
-    </div>
+      <div className="flex flex-wrap gap-2 border-t border-ink-200 bg-ink-50 px-5 py-3.5 text-xs">
+        <span className="rounded-full bg-brand-50 px-2.5 py-1 text-brand-700">Clear, specific answer</span>
+        <span className="rounded-full bg-white px-2.5 py-1 text-ink-500 ring-1 ring-ink-200">132 wpm · 1 filler word</span>
+      </div>
+    </Card>
   )
 }
 
@@ -85,122 +78,213 @@ export function LandingPage() {
   if (user) return <Navigate to="/dashboard" replace />
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* nav */}
-      <header className="sticky top-0 z-30 border-b border-ink-100 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-8 px-6">
-          <Logo />
-          <nav className="hidden gap-6 text-sm text-ink-500 md:flex">
-            <a href="#features" className="hover:text-ink-900">Features</a>
-            <a href="#how" className="hover:text-ink-900">How it works</a>
-            <a href="#interviewers" className="hover:text-ink-900">Interviewers</a>
+    <div className="min-h-screen bg-paper">
+      {/* ---------------------------------------------------------------- header: the product's tools, not page sections */}
+      <header className="sticky top-0 z-30 border-b border-ink-200/80 bg-paper">
+        <Container className="flex h-[68px] items-center gap-4 md:gap-10">
+          <Link to="/" aria-label="Crackit home" className="shrink-0"><Logo /></Link>
+          <nav className="hidden gap-7 text-sm whitespace-nowrap text-ink-500 lg:flex" aria-label="Product">
+            {TOOLS.map((t) => (
+              <a key={t.id} href={`#${t.id}`} className="transition-colors hover:text-ink-900">{t.name}</a>
+            ))}
+            <a href="#how" className="transition-colors hover:text-ink-900">How it works</a>
           </nav>
-          <div className="ml-auto flex items-center gap-2">
-            <Link to="/login" className="rounded-lg px-4 py-2 text-sm font-medium text-ink-700 hover:bg-ink-100">Log in</Link>
-            <Link to="/register" className="rounded-lg bg-ink-900 px-4 py-2 text-sm font-medium text-white hover:bg-ink-700">Get started</Link>
+          <div className="ml-auto flex items-center gap-1 whitespace-nowrap sm:gap-4">
+            <Link to="/login" className="px-2 text-sm font-medium text-ink-700 transition-colors hover:text-ink-900">Log in</Link>
+            {/* shorter label on phones so the bar never wraps */}
+            <Link to="/register" className={buttonClass('primary', 'px-4 sm:px-5')}>
+              <span className="sm:hidden">Sign up</span><span className="hidden sm:inline">Start free</span>
+            </Link>
           </div>
-        </div>
+        </Container>
       </header>
 
-      {/* hero */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-x-0 -top-40 -z-0 h-96 bg-[radial-gradient(ellipse_at_top,var(--color-brand-100),transparent_60%)]" />
-        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 lg:grid-cols-[1.1fr_1fr]">
-          <div>
-            <span className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700">
-              <Sparkles className="size-3.5" /> Free · Voice-first · Instant feedback
-            </span>
-            <h1 className="mt-5 text-4xl leading-tight font-semibold tracking-tight sm:text-5xl">
-              Practise interviews out loud with an AI interviewer that <span className="text-gradient">actually listens</span>.
+      {/* ---------------------------------------------------------------- hero: what it is, all three tools, one action */}
+      <section>
+        <Container className="grid items-center gap-14 pt-14 pb-20 sm:pt-20 sm:pb-24 lg:grid-cols-12 lg:gap-12">
+          <div className="lg:col-span-7">
+            <Eyebrow>Your AI interview coach</Eyebrow>
+            <h1 className="mt-5 text-[2.6rem] leading-[1.05] font-semibold sm:text-6xl lg:text-[4rem]">
+              Practise the conversation, <em className="font-medium text-brand-700">not just the answers.</em>
             </h1>
-            <p className="mt-5 max-w-xl text-lg text-ink-500">
-              Speak your answers, get follow-up questions based on what you said, and finish with a
-              detailed report on your knowledge and your communication.
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink-500">
+              Rehearse interviews out loud with an AI interviewer that listens and follows up, study the
+              questions interviewers really ask, and check your resume against the job. Free.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link to="/register" className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-accent-600 px-6 py-3 font-medium text-white shadow-lg shadow-brand-600/25 hover:opacity-95">
+            <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-4">
+              <Link to="/register" className={buttonClass('primary', 'px-7 py-3 text-[0.95rem]')}>
                 Start practising free <ArrowRight className="size-4" />
               </Link>
-              <Link to="/login" className="rounded-xl border border-ink-200 px-6 py-3 font-medium text-ink-700 hover:bg-ink-50">I have an account</Link>
+              <a href="#how" className="text-sm font-medium text-ink-700 underline decoration-ink-300 underline-offset-4 transition-colors hover:decoration-ink-700">
+                See how it works
+              </a>
             </div>
-            <p className="mt-4 text-xs text-ink-400">Your camera stays on your device. Works best in Chrome or Edge.</p>
+            {/* the three tools at a glance, each a jump link to its section */}
+            <ul className="mt-10 flex flex-wrap gap-2" aria-label="What you can do">
+              {TOOLS.map(({ id, name, icon: Icon, tone }) => (
+                <li key={id}>
+                  <a href={`#${id}`} className="flex items-center gap-2 rounded-full border border-ink-200 bg-white py-1.5 pr-3.5 pl-1.5 text-sm text-ink-700 transition-colors hover:border-ink-300 hover:text-ink-900">
+                    <span className={cn('flex size-6 items-center justify-center rounded-full', tone)}><Icon className="size-3.5" aria-hidden /></span>
+                    {name}
+                  </a>
+                </li>
+              ))}
+            </ul>
           </div>
-          <ConversationPreview />
-        </div>
+          <div className="lg:col-span-5">
+            <TranscriptPreview />
+          </div>
+        </Container>
       </section>
 
-      {/* interview types */}
-      <div className="border-y border-ink-100 bg-ink-50">
-        <div className="mx-auto grid max-w-6xl gap-6 px-6 py-10 sm:grid-cols-2 lg:grid-cols-4">
-          {TYPES.map(({ icon: Icon, title, text }) => (
-            <div key={title} className="flex gap-3">
-              <Icon className="mt-0.5 size-5 shrink-0 text-brand-600" aria-hidden />
-              <div>
-                <p className="font-medium">{title}</p>
-                <p className="text-sm text-ink-500">{text}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* ---------------------------------------------------------------- the three tools */}
+      <section className="border-y border-ink-200/80 bg-white">
+        <Container className="py-20 sm:py-24">
+          <div className="max-w-2xl">
+            <Eyebrow>Three tools, one goal</Eyebrow>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold sm:text-[2.6rem]">Everything you need before the interview.</h2>
+          </div>
+          <div className="mt-12 grid gap-5 md:grid-cols-3">
+            {TOOLS.map(({ id, name, icon: Icon, tone, tagline, points, cta }) => (
+              <Card key={id} id={id} className="card-hover flex scroll-mt-24 flex-col p-7">
+                <span className={cn('flex size-11 items-center justify-center rounded-full', tone)}><Icon className="size-5" aria-hidden /></span>
+                <p className="mt-6 font-serif text-2xl font-semibold">{name}</p>
+                <p className="mt-2 text-[0.94rem] leading-relaxed text-ink-500">{tagline}</p>
+                <ul className="mt-5 flex-1 space-y-2.5 border-t border-ink-200 pt-5 text-sm text-ink-700">
+                  {points.map((p) => (
+                    <li key={p} className="flex gap-2.5"><Check className="mt-0.5 size-4 shrink-0 text-brand-600" aria-hidden />{p}</li>
+                  ))}
+                </ul>
+                <Link to="/register" className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-ink-900 underline decoration-ink-300 underline-offset-4 transition-colors hover:decoration-ink-900">
+                  {cta} <ArrowRight className="size-3.5" />
+                </Link>
+              </Card>
+            ))}
+          </div>
+        </Container>
+      </section>
 
-      <Section id="features" eyebrow="Features" title="Everything a practice interview needs, nothing it doesn’t">
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map(({ icon: Icon, title, text }) => (
-            <div key={title} className="rounded-2xl border border-ink-100 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
-              <span className="flex size-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><Icon className="size-5" aria-hidden /></span>
-              <p className="mt-4 font-semibold">{title}</p>
-              <p className="mt-1.5 text-sm text-ink-500">{text}</p>
-            </div>
-          ))}
-        </div>
-      </Section>
-
-      <div className="bg-ink-50">
-        <Section id="how" eyebrow="How it works" title="From sign-up to feedback in three steps">
-          <ol className="grid gap-5 md:grid-cols-3">
-            {[
-              ['Set it up', 'Pick a topic, your resume, a job description or HR questions. Choose your level, length and interviewer, and check your mic.'],
-              ['Talk it through', 'The interviewer asks, listens and follows up. Pause for two seconds when you’re done, or type if you prefer.'],
-              ['Learn from it', 'Get scores, specific strengths and gaps, a model answer for every question, and your speaking stats.'],
-            ].map(([title, text], i) => (
-              <li key={title} className="rounded-2xl border border-ink-100 bg-white p-6">
-                <span className="flex size-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-600 to-accent-500 text-sm font-semibold text-white">{i + 1}</span>
-                <p className="mt-4 font-semibold">{title}</p>
-                <p className="mt-1.5 text-sm text-ink-500">{text}</p>
+      {/* ---------------------------------------------------------------- how a mock interview works */}
+      <section id="how" className="scroll-mt-20">
+        <Container className="grid gap-12 py-24 sm:py-28 lg:grid-cols-12">
+          <div className="lg:col-span-4">
+            <Eyebrow>How a mock interview works</Eyebrow>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold sm:text-[2.6rem]">Three steps, one honest conversation.</h2>
+          </div>
+          <ol className="divide-y divide-ink-200 lg:col-span-7 lg:col-start-6">
+            {STEPS.map(([title, text], i) => (
+              <li key={title} className="grid grid-cols-[3.5rem_1fr] gap-4 py-8 first:pt-0 last:pb-0">
+                <span className="font-serif text-3xl leading-none text-brand-600">{i + 1}.</span>
+                <div>
+                  <p className="font-serif text-2xl font-semibold">{title}</p>
+                  <p className="mt-2 leading-relaxed text-ink-500">{text}</p>
+                </div>
               </li>
             ))}
           </ol>
-        </Section>
-      </div>
-
-      <Section id="interviewers" eyebrow="Interviewers" title="Choose who you practise with">
-        <div className="grid gap-5 md:grid-cols-3">
-          {INTERVIEWERS.map((p) => (
-            <div key={p.id} className="flex items-center gap-4 rounded-2xl border border-ink-100 bg-white p-5">
-              <span className={cn('flex size-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-xl font-semibold text-white', p.color)}>{p.name[0]}</span>
-              <div>
-                <p className="font-semibold">{p.name}</p>
-                <p className="text-sm text-ink-500">{p.style}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Section>
-
-      {/* final CTA */}
-      <section className="px-6 pb-20">
-        <div className="mx-auto max-w-6xl overflow-hidden rounded-3xl bg-gradient-to-r from-brand-600 to-accent-600 px-8 py-12 text-white">
-          <h2 className="text-3xl font-semibold tracking-tight">Your next interview is a conversation. Practise one.</h2>
-          <p className="mt-2 text-brand-100">It takes a minute to set up and five to practise.</p>
-          <Link to="/register" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 font-medium text-brand-700 hover:bg-brand-50">
-            Create a free account <ArrowRight className="size-4" />
-          </Link>
-        </div>
+        </Container>
       </section>
 
-      <footer className="border-t border-ink-100 py-8 text-center text-sm text-ink-400">
-        MockInterview AI · Built with FastAPI, LangGraph, Groq and Kokoro
+      {/* ---------------------------------------------------------------- what the interviewer does */}
+      <section className="bg-paper-deep/60">
+        <Container className="py-24 sm:py-28">
+          <div className="max-w-2xl">
+            <Eyebrow>Inside the interview</Eyebrow>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold sm:text-[2.6rem]">Built to feel like the real thing.</h2>
+          </div>
+          <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {FEATURES.map(({ icon: Icon, title, text }, i) => (
+              <Card key={title} className="card-hover p-7">
+                <span className={cn('flex size-10 items-center justify-center rounded-full', TONES[i % TONES.length])}><Icon className="size-[18px]" aria-hidden /></span>
+                <p className="mt-6 font-serif text-xl font-semibold">{title}</p>
+                <p className="mt-2 text-[0.94rem] leading-relaxed text-ink-500">{text}</p>
+              </Card>
+            ))}
+          </div>
+        </Container>
+      </section>
+
+      {/* ---------------------------------------------------------------- the report */}
+      <section className="border-t border-ink-200/80 bg-white">
+        <Container className="grid items-center gap-14 py-24 sm:py-28 lg:grid-cols-2">
+          <div>
+            <Eyebrow>After every session</Eyebrow>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold sm:text-[2.6rem]">A report worth reading.</h2>
+            <ul className="mt-8 space-y-4 text-ink-500">
+              {['A score for every question, calibrated to your level', 'What you got right, and exactly what was missing', 'A model outline of a strong answer', 'Speaking pace, filler words and answer length, measured'].map((t) => (
+                <li key={t} className="flex gap-3"><Check className="mt-0.5 size-4 shrink-0 text-brand-600" aria-hidden />{t}</li>
+              ))}
+            </ul>
+          </div>
+          <Card className="p-7 sm:p-9">
+            <div className="flex items-end justify-between border-b border-ink-200 pb-6">
+              <div>
+                <p className="text-xs tracking-[0.12em] text-ink-500 uppercase">Overall</p>
+                <p className="mt-2 font-serif text-6xl leading-none font-semibold text-success-700">78</p>
+              </div>
+              <p className="text-right text-sm text-ink-500">Resume-based interview<br />10 minutes with Arjun</p>
+            </div>
+            <dl className="grid grid-cols-3 gap-4 py-6 text-center">
+              {[['Technical', 74], ['Clarity', 82], ['Structure', 79]].map(([k, v]) => (
+                <div key={k}><dt className="text-xs text-ink-500">{k}</dt><dd className="mt-1 font-serif text-2xl font-semibold">{v}</dd></div>
+              ))}
+            </dl>
+            <p className="rounded-xl bg-brand-50 p-4 text-sm leading-relaxed text-ink-700">
+              <span className="font-medium text-brand-700">A strong answer</span> would name the trade-off
+              of caching (more memory, data that can go stale) and say how you checked the results stayed
+              correct after the change.
+            </p>
+          </Card>
+        </Container>
+      </section>
+
+      {/* ---------------------------------------------------------------- interviewers */}
+      <section id="interviewers" className="scroll-mt-20 border-t border-ink-200/80">
+        <Container className="py-24 sm:py-28">
+          <div className="max-w-2xl">
+            <Eyebrow>Interviewers</Eyebrow>
+            <h2 className="mt-4 text-3xl leading-tight font-semibold sm:text-[2.6rem]">Choose who sits across the table.</h2>
+          </div>
+          <div className="mt-12 grid gap-5 md:grid-cols-3">
+            {INTERVIEWERS.map((p) => (
+              <Card key={p.id} className="card-hover flex items-center gap-5 p-6">
+                <Avatar persona={p.id} />
+                <div>
+                  <p className="font-serif text-xl font-semibold">{p.name}</p>
+                  <p className="text-sm text-ink-500">{p.style}</p>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </Container>
+      </section>
+
+      {/* ---------------------------------------------------------------- closing CTA */}
+      <section className="pb-24 sm:pb-28">
+        <Container>
+          <div className="rounded-3xl bg-ink-900 px-8 py-16 text-center text-paper sm:px-16 sm:py-20">
+            <h2 className="mx-auto max-w-2xl text-3xl leading-tight font-semibold text-balance text-paper sm:text-[2.6rem]">Practice out loud. Crack the real one.</h2>
+            <p className="mx-auto mt-5 max-w-md text-ink-300">Free, and ready in a minute. Five minutes is enough for your first session.</p>
+            <Link to="/register" className={buttonClass('secondary', 'mt-9 border-transparent px-7 py-3 text-[0.95rem]')}>
+              Create a free account <ArrowRight className="size-4" />
+            </Link>
+          </div>
+        </Container>
+      </section>
+
+      {/* ---------------------------------------------------------------- footer */}
+      <footer className="border-t border-ink-200/80">
+        <Container className="flex flex-col gap-6 py-10 text-sm text-ink-500 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2">
+            <Logo />
+            <p className="text-ink-400">Practice out loud, crack the real one.</p>
+          </div>
+          <nav className="flex flex-wrap gap-x-6 gap-y-2" aria-label="Footer">
+            {TOOLS.map((t) => <a key={t.id} href={`#${t.id}`} className="transition-colors hover:text-ink-900">{t.name}</a>)}
+            <Link to="/login" className="transition-colors hover:text-ink-900">Log in</Link>
+            <Link to="/privacy" className="transition-colors hover:text-ink-900">Privacy</Link>
+          </nav>
+        </Container>
       </footer>
     </div>
   )

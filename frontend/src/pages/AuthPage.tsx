@@ -1,18 +1,14 @@
 // Login and registration (one component; `mode` decides which).
+// Layout: a quiet editorial panel on the left (desktop only), the form on the right.
 
-import { CheckCircle2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router'
 
 import { Logo } from '@/components/Brand'
-import { Button, ErrorAlert, Input } from '@/components/ui'
+import { Button, ErrorAlert, Eyebrow, Input } from '@/components/ui'
 import { useAuth } from '@/features/auth/context'
-
-const POINTS = [
-  'Real voice conversation with follow-up questions',
-  'Feedback on every answer and your speaking style',
-  'Practise any topic, your resume, a job post or HR',
-]
+import { TOOLS } from '@/features/product'
+import { cn } from '@/lib/utils'
 
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const { user, login, register } = useAuth()
@@ -42,47 +38,69 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   }
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      {/* brand panel */}
-      <div className="relative hidden overflow-hidden bg-gradient-to-br from-brand-600 to-accent-600 p-12 text-white lg:flex lg:flex-col">
-        <Link to="/"><Logo dark /></Link>
-        <div className="my-auto">
-          <h2 className="text-3xl leading-snug font-semibold">Interviews are conversations.<br />Practise them like one.</h2>
-          <ul className="mt-8 space-y-3">
-            {POINTS.map((p) => (
-              <li key={p} className="flex items-center gap-2 text-brand-100"><CheckCircle2 className="size-5 text-white" /> {p}</li>
+    <div className="grid min-h-screen bg-paper lg:grid-cols-[1.05fr_1fr]">
+      {/* editorial panel */}
+      <aside className="hidden flex-col border-r border-ink-200/80 bg-paper-deep/70 p-14 lg:flex">
+        <Link to="/" aria-label="Crackit home"><Logo /></Link>
+        <div className="my-auto max-w-md">
+          <Eyebrow>Your AI interview coach</Eyebrow>
+          <p className="mt-6 font-serif text-[2.6rem] leading-[1.1] font-semibold tracking-tight">
+            Interviews are conversations. <em className="font-medium text-brand-700">Practise them like one.</em>
+          </p>
+          {/* the same three tools, same icons, as the landing page and the app */}
+          <ul className="mt-10 space-y-5">
+            {TOOLS.map(({ id, name, icon: Icon, tone, tagline }) => (
+              <li key={id} className="flex gap-4">
+                <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-full', tone)}><Icon className="size-4" aria-hidden /></span>
+                <span>
+                  <span className="block font-medium text-ink-900">{name}</span>
+                  <span className="block text-sm leading-relaxed text-ink-500">{tagline}</span>
+                </span>
+              </li>
             ))}
           </ul>
         </div>
-        <div className="absolute -right-24 -bottom-24 size-80 rounded-full bg-white/10" aria-hidden />
-      </div>
+        <p className="text-sm text-ink-400">Free to use · No camera recording</p>
+      </aside>
 
       {/* form */}
-      <div className="flex items-center justify-center bg-white px-6 py-12">
+      <main className="flex items-center justify-center px-6 py-14">
         <div className="w-full max-w-sm">
-          <Link to="/" className="mb-8 inline-block lg:hidden"><Logo /></Link>
-          <h1 className="text-2xl font-semibold tracking-tight">{isRegister ? 'Create your account' : 'Welcome back'}</h1>
-          <p className="mt-1 text-sm text-ink-500">
-            {isRegister ? 'Free, and ready in a minute.' : 'Log in to continue practising.'}
+          <Link to="/" className="mb-12 inline-block lg:hidden" aria-label="Crackit home"><Logo /></Link>
+          <h1 className="text-4xl font-semibold">{isRegister ? 'Create your account' : 'Welcome back'}</h1>
+          <p className="mt-3 text-ink-500">
+            {isRegister ? 'Free, and ready in a minute. No card needed.' : 'Log in to continue practising.'}
           </p>
-          <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+          <form onSubmit={handleSubmit} className="mt-10 space-y-5">
             {isRegister && <Input label="Full name" name="name" required autoComplete="name" />}
             <Input label="Email" name="email" type="email" required autoComplete="email" />
             <Input label="Password" name="password" type="password" required minLength={isRegister ? 8 : undefined}
               autoComplete={isRegister ? 'new-password' : 'current-password'} />
+            {!isRegister && (
+              <p className="-mt-2 text-right text-sm">
+                <Link to="/forgot-password" className="text-ink-500 underline decoration-ink-300 underline-offset-4 hover:text-ink-900">Forgot password?</Link>
+              </p>
+            )}
             {error && <ErrorAlert message={error} />}
-            <Button type="submit" loading={submitting} className="w-full py-2.5">
+            <Button type="submit" loading={submitting} className="w-full py-3">
               {isRegister ? 'Create account' : 'Log in'}
             </Button>
+            {isRegister && (
+              <p className="text-center text-xs leading-relaxed text-ink-500">
+                By creating an account you agree to how we handle your data, described in the{' '}
+                <Link to="/privacy" className="underline underline-offset-2 hover:text-ink-900">privacy notice</Link>.
+              </p>
+            )}
           </form>
-          <p className="mt-6 text-center text-sm text-ink-500">
+          <p className="mt-8 text-center text-sm text-ink-500">
             {isRegister ? 'Already have an account? ' : 'New here? '}
-            <Link to={isRegister ? '/login' : '/register'} className="font-medium text-brand-600 hover:underline">
+            <Link to={isRegister ? '/login' : '/register'}
+              className="font-medium text-ink-900 underline decoration-ink-300 underline-offset-4 hover:decoration-ink-900">
               {isRegister ? 'Log in' : 'Create an account'}
             </Link>
           </p>
         </div>
-      </div>
+      </main>
     </div>
   )
 }

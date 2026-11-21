@@ -60,8 +60,42 @@ def test_thread_rule_moves_on_after_repeated_misses_but_digs_when_correct():
 
     assert "MUST be new_topic now" in thread_rule(depth=1, misses=2)  # struggling twice
     assert "ALSO incorrect" in thread_rule(depth=1, misses=1)  # one more miss -> move on
-    assert thread_rule(depth=2, misses=0) == ""  # doing well: keep exploring
+    assert "MUST be hint" in thread_rule(depth=2, misses=0)  # first miss -> hint and retry
     assert "follow-ups on this thread" in thread_rule(depth=3, misses=0)  # depth cap
+
+
+def test_non_answers_get_an_honest_line_not_praise():
+    from app.agents.interview.graph import non_answer_reaction
+
+    asked = non_answer_reaction("Can you just tell me the answer?", 4)
+    assert asked and "feedback report" in asked
+    for reply in ("I'm not really sure, I don't know.", "No idea, sorry", "Can we skip this one?"):
+        line = non_answer_reaction(reply, 3)
+        assert line and line.startswith("No worries") and "great" not in line.lower(), reply
+    # Real attempts keep the model's own reaction (which may credit what was right).
+    assert non_answer_reaction("I guess it depends on the load somehow.", 3) is None
+    assert non_answer_reaction("The current will pass through the neutral to earth.", 3) is None
+    long = "I'm not sure about the exact figure, but the no-load current is small because " * 2
+    assert non_answer_reaction(long, 3) is None
+
+
+def test_interviewer_hints_and_never_gives_the_answer():
+    """Students asked for hints, not answers: a weak answer gets a hint and one retry, a
+    second miss moves on WITHOUT revealing the answer (the report has model answers)."""
+    from app.agents.interview import prompts
+    from app.agents.interview.graph import thread_rule
+    from app.schemas.interview import InterviewerTurn, InterviewerTurnWithSwitch
+
+    assert "hint" in InterviewerTurn.model_fields["next_move"].annotation.__args__
+    texts = [prompts.INTERVIEWER_PROMPT, prompts.SWITCH_PROMPT,
+             *(thread_rule(d, m) for d in (0, 3) for m in (0, 1, 2)),
+             InterviewerTurnWithSwitch.model_fields["switch_reaction"].description]
+    for text in texts:
+        lowered = text.lower()
+        for phrase in ("give the correct idea", "give the answer briefly", "correct idea in one"):
+            assert phrase not in lowered, phrase
+    assert "NEVER GIVE THE ANSWER" in prompts.INTERVIEWER_PROMPT
+    assert "Do NOT give the answer" in prompts.SWITCH_PROMPT
 
 
 def test_speech_text_normalisation():
@@ -106,3 +140,62 @@ def test_strict_llm_schemas_have_no_optional_fields():
     for schema in (InterviewerTurn, InterviewerTurnWithSwitch):
         optional = [name for name, f in schema.model_fields.items() if not f.is_required()]
         assert optional == [], f"{schema.__name__} has optional fields: {optional}"
+
+
+def test_trim_silence_replaces_edge_silence_with_a_fixed_pause():
+    """Kokoro clips carry ~0.3 s of silence across each seam; played back to back that
+    sounded robotic. Edges are trimmed and a deliberate, consistent pause is appended."""
+    import numpy as np
+
+    from app.services.tts import pause_after, trim_silence
+
+    sr = 24000
+    tone = (0.5 * np.sin(np.linspace(0, 2000, sr))).astype(np.float32)  # 1 s of "speech"
+    clip = np.concatenate([np.zeros(int(0.05 * sr)), tone, np.zeros(int(0.3 * sr))]).astype(np.float32)
+    out = trim_silence(clip, sr, pause_s=0.18)
+    assert abs(len(out) / sr - (1.0 + 0.015 + 0.18)) < 0.02
+    assert pause_after("How would you check it?") > pause_after("First, the data,")
+
+
+def test_prep_schema_is_strict_safe_and_tracks_come_from_the_question_bank():
+    """Prep output goes through Groq strict mode: no optional fields allowed. Tracks are
+    read from knowledge_base/questions, so every track has subtopics to pick from."""
+    from app.schemas.prep import PrepQuestion, PrepSet
+    from app.services.prep_service import list_tracks
+
+    for schema in (PrepQuestion, PrepSet):
+        optional = [name for name, f in schema.model_fields.items() if not f.is_required()]
+        assert optional == [], f"{schema.__name__} has optional fields: {optional}"
+    tracks = {t.id: t for t in list_tracks()}
+    assert {"backend", "hr", "machine_learning"} <= tracks.keys()
+    assert all(t.topics for t in tracks.values())
+
+
+def test_prep_repeat_filter_catches_rewordings_but_keeps_new_angles():
+    """Measured on real "More questions" output for a resume."""
+    from app.services.prep_service import is_repeat
+
+    assert is_repeat(
+        "Looking at your entire career, if you could revisit any project, which one would you change and why?",
+        "Looking back at your entire career, what would you change about one of your projects if you had the chance?",
+    )
+    assert not is_repeat(
+        "Your Resume Matcher project indexed 50k job postings using Qdrant. What was the hardest part?",
+        "Can you walk me through the Resume Matcher project you built at DataNest Labs?",
+    )
+    assert not is_repeat("What makes an API RESTful?", "How would you design pagination for a public API?")
+
+
+def test_end_of_interview_feedback_is_an_emoji_scale_with_optional_comment():
+    import pytest
+    from pydantic import ValidationError
+
+    from app.api.v1.interviews import router
+    from app.schemas.interview import InterviewFeedbackIn
+
+    assert InterviewFeedbackIn(rating=5).comment is None
+    assert InterviewFeedbackIn(rating=1, comment="The voice paused a lot").rating == 1
+    for bad in ({"rating": 0}, {"rating": 6}, {"rating": 3, "comment": "x" * 1001}):
+        with pytest.raises(ValidationError):
+            InterviewFeedbackIn(**bad)
+    assert any(getattr(r, "path", "") == "/interviews/{session_id}/feedback" for r in router.routes)

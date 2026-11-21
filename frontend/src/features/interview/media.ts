@@ -7,8 +7,9 @@
 
 import { useEffect, useState } from 'react'
 
+import { activeGroqKey } from '@/features/account/groqKey'
 import { tokenStore } from '@/lib/api'
-import type { InterviewerId } from '@/lib/types'
+import type { InterviewerId, VoiceEngine } from '@/lib/types'
 
 // ================================================================== camera + mic
 // ready = camera + mic, audio-only = mic but no camera, denied/unavailable = answer by typing
@@ -100,7 +101,10 @@ export function useAudioLevel(stream: MediaStream | null) {
  * firstMax keeps the FIRST chunk short (one sentence) so the voice starts quickly; the server
  * voice generates faster than real time, so later chunks are ready before they're needed.
  */
-function chunkText(text: string, max = 220, firstMax = max): string[] {
+// 160 characters: about 10 s of speech. The browser voice is the interviewer's main voice now,
+// and Chrome's online Google voices are known to stop mid-sentence on utterances of ~15 s;
+// the old 220 let a 217-character greeting through as one piece.
+function chunkText(text: string, max = 160, firstMax = max): string[] {
   const sentences = text.match(/[^.!?]+[.!?]*\s*/g) ?? [text]
   const chunks: string[] = []
   let current = ''
@@ -152,15 +156,21 @@ export function speechChunks(text: string, max = 140): string[] {
   return chunks
 }
 
-// --- server voice (local Kokoro-82M): natural; disabled for the session after the first 503
+// --- server voice (Groq Orpheus on the user's key, or local Kokoro): natural; disabled for
+// the session after the first 503
 let serverVoice: 'unknown' | 'on' | 'off' = 'unknown'
 let serverVoiceReason = ''
 
 async function fetchSpeech(text: string, interviewer: InterviewerId, signal: AbortSignal) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenStore.get() ?? ''}` }
+  // The voice is generated on Groq with the user's own key (bring-your-own-key). Usually the
+  // server already started it with the key from the answer request; this covers the rest.
+  const groqKey = activeGroqKey()
+  if (groqKey) headers['X-Groq-Key'] = groqKey
   const res = await fetch('/api/v1/interviews/tts', {
     method: 'POST',
     signal,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenStore.get() ?? ''}` },
+    headers,
     body: JSON.stringify({ text, interviewer }),
   })
   if (res.status === 503) {
@@ -169,6 +179,9 @@ async function fetchSpeech(text: string, interviewer: InterviewerId, signal: Abo
     throw new Error('server voice unavailable')
   }
   if (!res.ok) throw new Error(`tts ${res.status}`)
+  // The server's own measured generation speed (see gen_per_audio() in tts.py).
+  const measured = Number(res.headers.get('X-Gen-Per-Audio'))
+  if (measured > 0) genPerAudioSec = measured
   return res.arrayBuffer()
 }
 
@@ -182,11 +195,16 @@ export function unlockAudio() {
   void audioCtx.resume().catch(() => undefined)
 }
 
-// Live estimates of the voice engine's speed on THIS machine right now, learned from each
-// chunk: seconds of generation per second of audio, and characters spoken per second.
-let genPerAudioSec = 0.9
+// Live estimates of the voice engine's speed on THIS machine: seconds of generation per
+// second of audio (reported by the server, which measures it), and characters per second
+// (learned from each clip). Estimating generation speed from fetch times was wrong: chunks
+// the server had pre-generated return in ~50 ms, so generation looked ~10x faster than it
+// is, playback started too early and then stalled between sentences ("robotic" pauses).
+let genPerAudioSec = 0.85
 let charsPerSec = 15
-const SENTENCE_BREATH_S = 0.6 // a pause this short BETWEEN sentences sounds like a breath
+// Each clip already ends with a natural pause (0.18 s after a sentence, see tts.py), so any
+// wait for the next clip ADDS to it. Allow only a tiny extra; otherwise buffer before starting.
+const SENTENCE_BREATH_S = 0.15
 const MAX_START_WAIT_MS = 3000 // never hold the first word back longer than this
 
 /**
@@ -226,7 +244,7 @@ async function speakServer(
   chunks: string[],
   interviewer: InterviewerId,
   signal: AbortSignal,
-  onChunkStart?: (index: number) => void,
+  onChunkStart?: (index: number, durationSec: number) => void,
 ) {
   audioCtx ??= new AudioContext()
   const ac = audioCtx
@@ -245,11 +263,8 @@ async function speakServer(
 
   void (async () => {
     for (let i = 0; i < chunks.length; i++) {
-      const t0 = performance.now()
       try {
         const buffer = await ac.decodeAudioData(await fetchSpeech(chunks[i], interviewer, signal))
-        const gen = (performance.now() - t0) / 1000
-        genPerAudioSec = 0.6 * genPerAudioSec + 0.4 * (gen / buffer.duration)
         charsPerSec = 0.6 * charsPerSec + 0.4 * (chunks[i].length / buffer.duration)
         ready[i] = buffer
       } catch {
@@ -301,9 +316,11 @@ async function speakServer(
     source.connect(ac.destination)
     const startAt = Math.max(endAt, ac.currentTime + 0.02)
     source.start(startAt)
-    // Tell the UI exactly when this chunk becomes audible (transcript follows the voice).
+    // Tell the UI exactly when this chunk becomes audible and how long its words last
+    // (the clip minus its trailing pause), so the text can stream in step with the voice.
     const index = i
-    window.setTimeout(() => !signal.aborted && onChunkStart?.(index), Math.max(0, (startAt - ac.currentTime) * 1000))
+    const spokenSec = Math.max(0.3, buffer.duration - 0.18)
+    window.setTimeout(() => !signal.aborted && onChunkStart?.(index, spokenSec), Math.max(0, (startAt - ac.currentTime) * 1000))
     endAt = startAt + buffer.duration
     sources.push(source)
     last = source
@@ -335,16 +352,28 @@ export function pickBrowserVoice(interviewer: InterviewerId) {
   return english.sort((a, b) => scoreVoice(b, interviewer) - scoreVoice(a, interviewer))[0]
 }
 
+// Keeping the on-screen line in step with the browser voice. It used to assume a fixed 16
+// characters per second, but voices differ (and run at rate 1.12), so the words drifted ahead
+// of or behind the voice. Now, in order of preference:
+//  1. Word-boundary events: most local voices (Windows, macOS, Android) report each word as
+//     they start it, so the text is revealed exactly as it is said.
+//  2. Voices that send none (Chrome's online Google voices): the speaking speed measured on
+//     this voice's earlier pieces (start to end of each piece), not a fixed guess.
+const BROWSER_RATE = 1.12 // a confident conversational pace; 1.0 sounds slow and flat
+const measuredCharsPerSec = new Map<string, number>() // voice name -> measured speed
+const reportsWords = new Map<string, boolean>() // voice name -> fires word boundaries
+
 function speakBrowser(
   text: string,
   interviewer: InterviewerId,
   signal: AbortSignal,
-  onChunkStart?: (spokenSoFar: string) => void,
+  onProgress?: (before: string, chunk: string, durationSec: number) => void,
 ) {
   return new Promise<void>((resolve) => {
     if (!('speechSynthesis' in window)) return resolve()
     speechSynthesis.cancel()
     const voice = pickBrowserVoice(interviewer)
+    const voiceKey = voice?.name ?? 'default'
     const chunks = chunkText(text)
     let i = 0
     const next = () => {
@@ -352,11 +381,38 @@ function speakBrowser(
       const u = new SpeechSynthesisUtterance(chunks[i++])
       if (voice) u.voice = voice
       u.lang = voice?.lang ?? 'en-US'
-      u.rate = 1.12 // a confident conversational pace; 1.0 sounds slow and flat
+      u.rate = BROWSER_RATE
       u.pitch = 1
-      const soFar = chunks.slice(0, i).join(' ')
-      u.onstart = () => onChunkStart?.(soFar)
-      u.onend = next
+      const before = chunks.slice(0, i - 1).join(' ')
+      const chunk = chunks[i - 1]
+      let startedAt = 0
+      u.onstart = () => {
+        startedAt = performance.now()
+        if (reportsWords.get(voiceKey)) {
+          onProgress?.(before, '', 0) // the words arrive one by one below
+        } else {
+          const cps = measuredCharsPerSec.get(voiceKey) ?? 15 * BROWSER_RATE
+          onProgress?.(before, chunk, chunk.length / cps)
+        }
+      }
+      u.onboundary = (e) => {
+        if (e.name !== 'word') return
+        reportsWords.set(voiceKey, true)
+        // Everything up to and including the word being said now; the room shows it at once.
+        const end = e.charLength ? e.charIndex + e.charLength : chunk.indexOf(' ', e.charIndex + 1)
+        const said = chunk.slice(0, end < 0 ? chunk.length : end)
+        onProgress?.(before, said, 0)
+      }
+      u.onend = () => {
+        const seconds = (performance.now() - startedAt) / 1000
+        if (startedAt && seconds > 0.5) {
+          const cps = chunk.length / seconds
+          const old = measuredCharsPerSec.get(voiceKey)
+          measuredCharsPerSec.set(voiceKey, old ? 0.5 * old + 0.5 * cps : cps)
+        }
+        onProgress?.(before, chunk, 0) // the whole piece is said: show all of it
+        next()
+      }
       u.onerror = next
       speechSynthesis.speak(u)
     }
@@ -368,26 +424,42 @@ function speakBrowser(
   })
 }
 
+/** A part of the line that just became audible: everything said before it, the part itself,
+ * and roughly how long it takes to say (used to stream its words in step with the voice). */
+export interface SpokenPart {
+  before: string
+  text: string
+  durationSec: number
+}
+
+// The voice this interview uses, as the server last said (see speak()).
+let engine: VoiceEngine = 'browser'
+
 /**
  * Speak as the interviewer. Resolves when finished or aborted.
- * serverChunks: the split the server returned with the turn (and is already generating);
- * requesting exactly those finds them ready or in progress.
- * onProgress: called with the text spoken so far, each time a new part becomes audible, so
- * the transcript shows words as she says them instead of seconds before.
+ * voice: 'browser' (the default, product decision Nov 2026): the student's own browser voice
+ * for every line. Unlimited and instant, and the voice never changes mid-interview. Server
+ * voices were measured and dropped as the default: server Kokoro voiced ~1 interview at a
+ * time, Groq's free voice ran out after 3,600 characters a day (and switched voice mid-way).
+ * 'server': /tts with the chunks the server returned (and is already generating).
+ * onProgress: called each time a new part becomes audible, so the screen shows words as
+ * they are said instead of seconds before.
  */
 export async function speak(
   text: string,
   interviewer: InterviewerId,
   signal: AbortSignal,
   serverChunks?: string[],
-  onProgress?: (spokenSoFar: string) => void,
+  onProgress?: (part: SpokenPart) => void,
+  voice: VoiceEngine = 'browser',
 ) {
   if (!text.trim()) return
+  engine = voice
   let prefix = '' // what the server voice already said, if it hands over part-way
-  if (serverVoice !== 'off') {
+  if (voice === 'server' && serverVoice !== 'off') {
     const chunks = serverChunks?.length ? serverChunks : speechChunks(text)
-    const spoken = await speakServer(chunks, interviewer, signal, (i) =>
-      onProgress?.(chunks.slice(0, i + 1).join(' ')),
+    const spoken = await speakServer(chunks, interviewer, signal, (i, durationSec) =>
+      onProgress?.({ before: chunks.slice(0, i).join(' '), text: chunks[i], durationSec }),
     )
     if (signal.aborted) return
     if (spoken === chunks.length) {
@@ -398,13 +470,18 @@ export async function speak(
     prefix = chunks.slice(0, spoken).join(' ')
     text = chunks.slice(spoken).join(' ')
   }
-  await speakBrowser(text, interviewer, signal, (soFar) =>
-    onProgress?.(`${prefix} ${soFar}`.trim()),
+  await speakBrowser(text, interviewer, signal, (before, chunk, durationSec) =>
+    onProgress?.({ before: `${prefix} ${before}`.trim(), text: chunk, durationSec }),
   )
 }
 
 export function voiceDescription(interviewer: InterviewerId) {
-  if (serverVoice === 'on') return { natural: true, label: 'Natural voice' }
+  if (engine === 'server' && serverVoice === 'on') return { natural: true, label: 'Natural voice' }
+  if (engine === 'browser') {
+    // The browser voice is the chosen voice, not a fallback: no "browser voice" warning.
+    const v = 'speechSynthesis' in window ? pickBrowserVoice(interviewer) : undefined
+    return { natural: true, label: v ? `Voice: ${v.name}` : 'Browser voice' }
+  }
   const v = 'speechSynthesis' in window ? pickBrowserVoice(interviewer) : undefined
   return { natural: false, label: v ? `Browser voice: ${v.name}` : 'Browser voice', reason: serverVoiceReason }
 }

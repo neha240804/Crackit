@@ -8,22 +8,28 @@ to a background task without changing the route's contract (status is already tr
 import asyncio
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.common.errors import ai_http_error
 from app.agents.profile.graph import profile_graph
 from app.core.config import DATA_DIR
 from app.db.models import Resume, User
 from app.rag.vectorstore import delete_resume_chunks
 from app.services.document_text import SUPPORTED_EXTENSIONS
 
+Purpose = Literal["interview", "ats"]
+
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
 UPLOAD_DIR = DATA_DIR / "uploads"
 
 
-async def create_resume(db: AsyncSession, user: User, upload: UploadFile) -> Resume:
+async def create_resume(
+    db: AsyncSession, user: User, upload: UploadFile, purpose: Purpose = "interview"
+) -> Resume:
     filename = Path(upload.filename or "resume").name  # drop any client-supplied path
     ext = Path(filename).suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:
@@ -39,7 +45,9 @@ async def create_resume(db: AsyncSession, user: User, upload: UploadFile) -> Res
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
 
-    existing = await db.scalar(select(func.count()).where(Resume.user_id == user.id))
+    existing = await db.scalar(
+        select(func.count()).where(Resume.user_id == user.id, Resume.purpose == purpose)
+    )
     resume = Resume(
         id=resume_id,
         user_id=user.id,
@@ -47,7 +55,8 @@ async def create_resume(db: AsyncSession, user: User, upload: UploadFile) -> Res
         file_path=str(path),
         raw_text="",
         status="processing",
-        is_primary=existing == 0,  # the first resume becomes the default
+        is_primary=existing == 0,  # the first resume of this purpose becomes its default
+        purpose=purpose,
     )
     db.add(resume)
     await db.commit()
@@ -74,15 +83,17 @@ async def _run_profile_graph(db: AsyncSession, resume: Resume) -> None:
         else:
             resume.profile, resume.status, resume.error = result["profile"], "ready", None
     except Exception as exc:  # noqa: BLE001 - LLM/network failure: record it, don't crash the request
-        resume.status, resume.error = "failed", f"Parsing failed: {exc.__class__.__name__}"
+        resume.status = "failed"
+        resume.error = ai_http_error(exc, "Resume parsing").detail
     await db.commit()
     await db.refresh(resume)
 
 
-async def list_resumes(db: AsyncSession, user: User) -> list[Resume]:
-    rows = await db.scalars(
-        select(Resume).where(Resume.user_id == user.id).order_by(Resume.created_at.desc())
-    )
+async def list_resumes(db: AsyncSession, user: User, purpose: Purpose | None = None) -> list[Resume]:
+    query = select(Resume).where(Resume.user_id == user.id)
+    if purpose:
+        query = query.where(Resume.purpose == purpose)
+    rows = await db.scalars(query.order_by(Resume.created_at.desc()))
     return list(rows)
 
 
@@ -103,9 +114,13 @@ async def reparse_resume(db: AsyncSession, user: User, resume_id: uuid.UUID) -> 
 
 
 async def set_primary(db: AsyncSession, user: User, resume_id: uuid.UUID) -> Resume:
-    """Exactly one primary resume per user: clear the flag on all, then set it on one."""
+    """Exactly one primary resume per user AND purpose: clear the flag, then set it on one."""
     resume = await get_resume(db, user, resume_id)
-    await db.execute(update(Resume).where(Resume.user_id == user.id).values(is_primary=False))
+    await db.execute(
+        update(Resume)
+        .where(Resume.user_id == user.id, Resume.purpose == resume.purpose)
+        .values(is_primary=False)
+    )
     resume.is_primary = True
     await db.commit()
     await db.refresh(resume)
@@ -114,9 +129,9 @@ async def set_primary(db: AsyncSession, user: User, resume_id: uuid.UUID) -> Res
 
 async def delete_resume(db: AsyncSession, user: User, resume_id: uuid.UUID) -> None:
     """Delete everywhere it lives: Qdrant chunks, the file on disk, then the DB row.
-    If it was primary, the newest remaining resume becomes primary."""
+    If it was primary, the newest remaining resume of the same purpose becomes primary."""
     resume = await get_resume(db, user, resume_id)
-    was_primary = resume.is_primary
+    was_primary, purpose = resume.is_primary, resume.purpose
 
     await asyncio.to_thread(delete_resume_chunks, str(resume.id))  # sync client -> thread
     Path(resume.file_path).unlink(missing_ok=True)
@@ -126,7 +141,7 @@ async def delete_resume(db: AsyncSession, user: User, resume_id: uuid.UUID) -> N
     if was_primary:
         newest = await db.scalar(
             select(Resume)
-            .where(Resume.user_id == user.id)
+            .where(Resume.user_id == user.id, Resume.purpose == purpose)
             .order_by(Resume.created_at.desc())
             .limit(1)
         )

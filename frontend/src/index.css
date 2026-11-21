@@ -1,34 +1,126 @@
 @import 'tailwindcss';
 
-/* Design tokens for MockInterview AI. Tailwind v4 turns these into classes like
-   bg-brand-600, text-ink-500. Light app pages + a dark, focused interview room. */
+/*
+ * Crackit design system: warm, calm, editorial.
+ * - Warm off-white "paper" background, white surfaces, hairline warm borders.
+ * - One accent: sage green. No gradients, no glass effects.
+ * - Fraunces (serif) for headings, Inter (sans) for everything else.
+ * Token names (brand-*, ink-*) are shared by all pages, so changing a value here re-themes
+ * the whole app.
+ */
 @theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-serif: 'Fraunces Variable', ui-serif, Georgia, 'Times New Roman', serif;
 
-  --color-brand-50: #eef2ff;
-  --color-brand-100: #e0e7ff;
-  --color-brand-200: #c7d2fe;
-  --color-brand-300: #a5b4fc;
-  --color-brand-500: #6366f1;
-  --color-brand-600: #4f46e5;
-  --color-brand-700: #4338ca;
-  --color-accent-500: #a855f7;
-  --color-accent-600: #9333ea;
+  /* surfaces */
+  --color-paper: #f7f5f0;
+  --color-paper-deep: #efece4;
 
-  --color-ink-50: #f8fafc;
-  --color-ink-100: #f1f5f9;
-  --color-ink-200: #e2e8f0;
-  --color-ink-400: #94a3b8;
-  --color-ink-500: #64748b;
-  --color-ink-700: #334155;
-  --color-ink-900: #0f172a;
+  /* sage accent */
+  --color-brand-50: #f1f4f0;
+  --color-brand-100: #e2e9e1;
+  --color-brand-200: #c9d6c8;
+  --color-brand-300: #a8bca8;
+  --color-brand-500: #7d9a80;
+  --color-brand-600: #647f6a;
+  --color-brand-700: #4e6654;
+
+  /* two quiet secondary tones, used sparingly to tell things apart (e.g. the four
+     interview formats): a warm clay and a cool mist, at the same low saturation as sage */
+  --color-clay-50: #f8efe8;
+  --color-clay-100: #f1dfd1;
+  --color-clay-500: #c07e58;
+  --color-clay-600: #a8673f;
+  --color-clay-700: #8a5233;
+  --color-mist-50: #edf1f4;
+  --color-mist-100: #dde5ec;
+  --color-mist-500: #7b8fa3;
+  --color-mist-600: #5f7388;
+  --color-mist-700: #4a5b6d;
+  /* two more quiet tones so the seven question-prep tracks each get their own colour */
+  --color-teal-50: #eaf2f0;
+  --color-teal-100: #d3e5e1;
+  --color-teal-600: #4f7f78;
+  --color-teal-700: #3d6660;
+  --color-plum-50: #f4eef3;
+  --color-plum-100: #e7dbe5;
+  --color-plum-600: #85607f;
+  --color-plum-700: #6a4c66;
+
+  /* warm neutrals (text, borders, fills) */
+  --color-ink-50: #faf9f6;
+  --color-ink-100: #f2efe9;
+  --color-ink-200: #e6e1d7;
+  --color-ink-300: #d6cfc2;
+  --color-ink-400: #a39d91;
+  --color-ink-500: #77726a;
+  --color-ink-700: #45423c;
+  --color-ink-900: #1d1c19;
+
+  /* status, toned to the palette */
+  --color-success-50: #edf2ea;
+  --color-success-600: #5b7a52;
+  --color-success-700: #47613f;
+  --color-warning-50: #f7f0e1;
+  --color-warning-600: #a97d2f;
+  --color-warning-700: #86622a;
+  --color-danger-50: #f8ebe6;
+  --color-danger-600: #b25a45;
+  --color-danger-700: #8f4535;
+
+  /* soft, low-contrast shadows */
+  --shadow-soft: 0 1px 2px rgb(29 28 25 / 0.04), 0 1px 1px rgb(29 28 25 / 0.03);
+  --shadow-lift: 0 10px 30px -12px rgb(29 28 25 / 0.14), 0 2px 6px rgb(29 28 25 / 0.04);
 }
 
-body {
-  @apply bg-ink-50 text-ink-900 antialiased;
+@layer base {
+  body {
+    @apply bg-paper font-sans text-ink-900 antialiased;
+    font-feature-settings: 'cv11', 'ss01'; /* Inter: single-storey a, open digits */
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-serif tracking-tight text-ink-900;
+    font-optical-sizing: auto;
+  }
+  ::selection {
+    @apply bg-brand-200 text-ink-900;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-500;
+  }
 }
 
-/* Brand gradient text (headlines on the landing page). */
-.text-gradient {
-  @apply bg-gradient-to-r from-brand-600 to-accent-600 bg-clip-text text-transparent;
+/* Cards that respond to the pointer: a 2 px lift and a softer, larger shadow. */
+@utility card-hover {
+  @apply transition-[transform,box-shadow,border-color] duration-200 ease-out;
+  &:hover {
+    @apply -translate-y-0.5 border-ink-300 shadow-lift;
+  }
+}
+
+/* Page entry: a 6 px rise. Deliberately transform-only (no opacity): when a browser pauses
+   animations (hidden tab), an opacity fade can freeze at 0 and hide content; a paused rise
+   only leaves the page 6 px low. */
+@keyframes page-rise {
+  from {
+    transform: translateY(6px);
+  }
+  to {
+    transform: none;
+  }
+}
+@utility page-enter {
+  animation: page-rise 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Respect users who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
