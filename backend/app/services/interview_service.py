@@ -29,6 +29,7 @@ from app.schemas.interview import (
 )
 from app.schemas.profile import CandidateProfile
 from app.services import stt, tts
+from app.services.interview_allowance import check_allowance
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 logger = logging.getLogger(__name__)
@@ -99,6 +100,7 @@ def _interrupt_value(out: dict) -> dict | None:
 
 
 async def start(db: AsyncSession, user: User, config: InterviewConfig) -> InterviewSessionOut:
+    await check_allowance(db, user)  # 5 a day: say so now, not after the setup
     resume = await _primary_or_given_resume(db, user, config.resume_id)
     if config.interview_type in ("resume", "jd") and (resume is None or resume.status != "ready"):
         raise HTTPException(409, "Upload and parse a resume first (Resume Studio)")
@@ -178,6 +180,7 @@ async def begin(db: AsyncSession, user: User, session_id: uuid.UUID) -> Intervie
     session = await _get_session(db, user, session_id)
     await _ensure_waiting(session)
     if not session.config.get("started_at"):
+        await check_allowance(db, user)  # counts from here; resuming never counts again
         session.config = {**session.config, "started_at": time.time()}
         await db.commit()
     snapshot = await runtime.get_graph().aget_state(_cfg(session))

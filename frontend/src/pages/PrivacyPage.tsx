@@ -39,6 +39,7 @@ export function PrivacyPage() {
             <li><strong>Job descriptions</strong> you paste for job-based interviews.</li>
             <li><strong>Your interviews:</strong> the settings you chose, what the interviewer said, the written transcript of your answers, your feedback report, and the rating you gave at the end.</li>
             <li><strong>Question prep:</strong> your current study set, your marks on it, and the questions you starred.</li>
+            <li><strong>Feedback you send</strong> from the Feedback page: the topic, your rating and your message.</li>
             <li><strong>Password reset:</strong> for 30 minutes after you ask for one, a scrambled copy of the reset link.</li>
           </ul>
         </Section>
@@ -77,7 +78,7 @@ export function PrivacyPage() {
           <p>
             Your data stays until you delete it. You can delete a resume at any time, and you can delete your whole account in{' '}
             <Link to="/settings" className="font-medium text-brand-700 underline underline-offset-2">Settings</Link>: that
-            removes your account, resumes (files included), interviews, reports and prep data straight away.
+            removes your account, resumes (files included), interviews, reports, prep data and feedback straight away.
           </p>
           <p>Nightly backups of the database are kept for up to 7 days, so a deleted account disappears from backups within a week.</p>
         </Section>

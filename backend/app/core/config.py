@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     mail_from: str = ""  # e.g. "Crackit <no-reply@crackit.example.com>"
     password_reset_minutes: int = 30
 
+    # Mock interviews a user may START per rolling 24 hours. Every AI call runs on the user's
+    # own free Groq key, whose fast model allows 200k tokens a day (per Groq account, rolling);
+    # a 15-minute interview measured ~40k (scripts/measure_interview_quota.py). So 5 is what a
+    # free key carries: a 6th would run out of quota mid-interview, which is worse than a clear
+    # "come back at 14:20". Rolling 24 h, like Groq's own limit (no time-zone questions).
+    daily_interview_limit: int = 5
+
     # Error alerts (optional): a Sentry DSN sends unhandled server errors to Sentry, with no
     # request bodies, headers or user data (see main.py). Empty = off.
     sentry_dsn: str = ""

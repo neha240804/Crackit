@@ -17,6 +17,7 @@ from app.schemas.interview import (
 )
 from app.services import interview_service as svc
 from app.services import tts
+from app.services.interview_allowance import InterviewAllowance, get_allowance
 
 router = APIRouter(prefix="/interviews", tags=["mock interview"])
 
@@ -50,6 +51,12 @@ async def text_to_speech(body: TTSRequest, user: CurrentUser) -> Response:
         "X-Gen-Per-Audio": str(tts.gen_per_audio()),
         "X-Voice-Engine": tts.engine_used(body.text, body.interviewer),
     })
+
+
+@router.get("/allowance", response_model=InterviewAllowance)
+async def interview_allowance(user: CurrentUser, db: DbSession) -> InterviewAllowance:
+    """How many interviews can still be started in the rolling 24 hours (limit 5 by default)."""
+    return await get_allowance(db, user)
 
 
 @router.post("", response_model=InterviewSessionOut, status_code=201,

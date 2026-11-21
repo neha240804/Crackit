@@ -49,8 +49,11 @@ parts = [
     section("INTERVIEWER_PROMPT", "agents/interview/prompts.py", "Every interviewer turn: judge the "
             "last answer, react, and choose the next move and question.", "fast (temperature 0.6)",
             interview.INTERVIEWER_PROMPT,
-            "`{thread_rule}` is filled by code (topic control) with one of the rules below. The human "
-            "message is the last 10 transcript lines followed by \"Your turn.\""),
+            "This system message only holds what stays the same for the whole interview, so Groq can "
+            "cache it (cached tokens don't count against the free daily limit). The human message "
+            "starts with an INTERVIEW STATE block (topics covered, current thread and follow-up count, "
+            "the topic-control rule below, time left), then the last 10 transcript lines and "
+            "\"Your turn.\""),
     section("SWITCH_PROMPT", "agents/interview/prompts.py", "Moving to a new topic that CODE picked "
             "(`next_focus_area()`), when the candidate is struggling or a thread is exhausted.",
             "fast", interview.SWITCH_PROMPT),
@@ -59,7 +62,7 @@ parts = [
             "`{rubrics}` is the scoring rubric from `knowledge_base/rubrics/`. Pace and filler words "
             "are computed in code, not by the LLM."),
 
-    "### Topic-control rules (inserted as `{thread_rule}`)\n\n"
+    "### Topic-control rules (in the INTERVIEW STATE block of the human message)\n\n"
     f"Decided in code (`thread_rule()` in `graph.py`). MAX_MISSES = {MAX_MISSES}, "
     f"MAX_FOLLOW_UPS = {MAX_FOLLOW_UPS}.\n\n"
     "**Struggling: must switch now**\n\n" + block(thread_rule(0, MAX_MISSES)) +

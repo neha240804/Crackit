@@ -34,6 +34,19 @@ class User(TimestampedBase):
     # (api/deps.py). A database leak or backup can never expose it.
 
 
+class SiteFeedback(TimestampedBase):
+    """Feedback sent from the Feedback page: a bug, an idea, or anything else about Crackit.
+    (Ratings of single interviews live on interview_sessions.user_feedback.) Deleted with the
+    account. Read it with SQL for now; there is no admin screen."""
+
+    __tablename__ = "site_feedback"
+
+    user_id: Mapped[uuid.UUID] = user_fk()
+    category: Mapped[str] = mapped_column(String(20))  # bug | idea | interviewer | other
+    rating: Mapped[int | None] = mapped_column(Integer)  # optional emoji scale 1-5
+    message: Mapped[str] = mapped_column(Text)
+
+
 class PasswordResetToken(TimestampedBase):
     """A one-time password-reset link. Only the SHA-256 of the token is stored, so a database
     leak can't be used to reset anyone's password; the token itself exists only in the email."""

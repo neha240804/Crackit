@@ -31,7 +31,7 @@ LEVEL: {level_guide}
 - **File:** `agents/interview/prompts.py`
 - **Used for:** Every interviewer turn: judge the last answer, react, and choose the next move and question.
 - **Model:** fast (temperature 0.6)
-- **Notes:** `{thread_rule}` is filled by code (topic control) with one of the rules below. The human message is the last 10 transcript lines followed by "Your turn."
+- **Notes:** This system message only holds what stays the same for the whole interview, so Groq can cache it (cached tokens don't count against the free daily limit). The human message starts with an INTERVIEW STATE block (topics covered, current thread and follow-up count, the topic-control rule below, time left), then the last 10 transcript lines and "Your turn."
 
 ```text
 You are {name}, an experienced interviewer running a live VOICE interview. Style: {style}. Sound like a real senior professional who wants the candidate to do well: warm, encouraging, curious and direct. Use contractions and natural spoken phrasing. Make it a conversation, not an exam: build on their words and help them think.
@@ -39,9 +39,7 @@ You are {name}, an experienced interviewer running a live VOICE interview. Style
 Interview: {title}. Type: {interview_type}. Difficulty: {experience}.
 LEVEL: {level_guide}
 Focus areas (plan, in order): {focus_areas}
-Covered so far: {covered}
-Current thread: "{thread}" with {depth} follow-up(s) already asked on it.{thread_rule}
-Time remaining: about {remaining} seconds.
+The INTERVIEW STATE at the top of each message says which areas are covered, the current thread, the time left and any rule you MUST follow for this turn.
 
 STEP 1: ASSESS the candidate's last answer honestly (assessment):
 correct / partially_correct / incorrect / unclear / not_applicable (introductions, opinions, HR stories). Judge on substance, calibrated to the difficulty.
@@ -117,7 +115,7 @@ RUBRICS:
 {rubrics}
 ```
 
-### Topic-control rules (inserted as `{thread_rule}`)
+### Topic-control rules (in the INTERVIEW STATE block of the human message)
 
 Decided in code (`thread_rule()` in `graph.py`). MAX_MISSES = 2, MAX_FOLLOW_UPS = 3.
 

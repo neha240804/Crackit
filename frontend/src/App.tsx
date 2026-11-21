@@ -12,6 +12,7 @@ import { Spinner } from '@/components/ui'
 import { useAuth } from '@/features/auth/context'
 import { AuthPage } from '@/pages/AuthPage'
 import { DashboardPage } from '@/pages/DashboardPage'
+import { FeedbackPage } from '@/pages/FeedbackPage'
 import { InterviewReportPage } from '@/pages/InterviewReportPage'
 import { InterviewRoomPage } from '@/pages/InterviewRoomPage'
 import { LandingPage } from '@/pages/LandingPage'
@@ -47,6 +48,7 @@ const router = createBrowserRouter([
       { path: '/resume', element: <ResumePage /> },
       { path: '/prep', element: <PrepPage /> },
       { path: '/settings', element: <SettingsPage /> },
+      { path: '/feedback', element: <FeedbackPage /> },
       { path: '/interviews/new', element: <NewInterviewPage /> },
       { path: '/interviews/:id/report', element: <InterviewReportPage /> },
     ],
