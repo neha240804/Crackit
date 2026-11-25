@@ -452,7 +452,10 @@ Production gotchas:
   (`core/rate_limit.py`, `per_user()` / `per_ip()` route dependencies; single process only).
   No daily quotas: every AI call runs on the user's own key, and Groq enforces its quota. `/tts` only
   voices chunks registered by `presynthesize()` (403 otherwise). LangSmith tracing is forced
-  off when `APP_ENV=production` unless `TRACE_IN_PRODUCTION=true`.
+  off when `APP_ENV=production` unless `TRACE_IN_PRODUCTION=true`, and then it is **timings
+  only**: `apply_tracing_policy()` (`config.py`) forces `LANGSMITH_HIDE_INPUTS/OUTPUTS=true`, so
+  LangSmith gets latency, tokens and errors but no answers, resumes, reports or prompts
+  (verified by reading a run back: inputs `{}`, outputs empty). Full traces stay on in development.
 - **Bring-your-own-key ONLY (product decision, Nov 2026): no server key, no free allowance.**
   Every AI route uses `KeyedUser` (`require_groq_key` in `api/deps.py`) and answers **428**
   "Add your free Groq API key in Settings" without one; `current_groq_key()` raises the same
