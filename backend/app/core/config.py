@@ -40,7 +40,8 @@ class Settings(BaseSettings):
     # Browser origins allowed to call the API, comma-separated in .env
     # (e.g. CORS_ORIGINS=https://crackit.example.com). Dev default: the Vite server.
     cors_origins: str = "http://localhost:5174"
-    # LangSmith tracing in production (sends user data to LangSmith). Off unless set to true.
+    # LangSmith tracing in production. Off unless set to true; when on, traces carry timings,
+    # token counts and errors only, never content (forced at the bottom of this file).
     trace_in_production: bool = False
     # The site's public address, for links in emails (password reset), e.g.
     # https://crackit.example.com. Dev default: the Vite server.
@@ -179,9 +180,28 @@ def get_settings() -> Settings:
 
 settings = get_settings()
 
-# LangSmith traces contain everything the AI saw: resumes, job posts, interview transcripts.
-# Useful while developing; in production it would send every user's data to a third party
-# without telling them (audit H7). Off in production unless explicitly re-enabled.
-if settings.is_production and not settings.trace_in_production:
-    os.environ["LANGSMITH_TRACING"] = "false"
-    os.environ["LANGCHAIN_TRACING_V2"] = "false"
+HIDE_CONTENT_VARS = ("LANGSMITH_HIDE_INPUTS", "LANGSMITH_HIDE_OUTPUTS",
+                     "LANGCHAIN_HIDE_INPUTS", "LANGCHAIN_HIDE_OUTPUTS")
+
+
+def apply_tracing_policy(s: Settings, environ: dict) -> None:
+    """LangSmith in production.
+
+    Full traces contain everything the AI saw: resumes, job posts, interview transcripts.
+    Useful while developing; in production that would send every user's data to a third party
+    (audit H7). So production tracing is off unless TRACE_IN_PRODUCTION=true, and even then it
+    is TIMINGS ONLY (product decision, Nov 2026): every step's latency, token counts and errors,
+    never the content (answers, resumes, reports, prompts). Forced here in code, not left to
+    .env, so a missing line can't leak students' data. The LangSmith client reads these
+    variables when it starts, which is after this module is imported."""
+    if not s.is_production:
+        return
+    if not s.trace_in_production:
+        environ["LANGSMITH_TRACING"] = "false"
+        environ["LANGCHAIN_TRACING_V2"] = "false"
+        return
+    for var in HIDE_CONTENT_VARS:
+        environ[var] = "true"
+
+
+apply_tracing_policy(settings, os.environ)

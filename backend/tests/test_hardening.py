@@ -37,8 +37,11 @@ async def test_async_password_check_matches_sync():
 
 # ---------------------------------------------------------------- production settings
 def _prod(**overrides) -> Settings:
+    # smtp_host / app_url explicit: config.py also loads .env into os.environ, so a developer's
+    # SMTP_HOST (with the dev localhost APP_URL) would otherwise trip the APP_URL check here.
     values = {"app_env": "production", "secret_key": STRONG_KEY, "postgres_password": "s3cret-pw",
-              "cors_origins": "https://crackit.example.com"}
+              "cors_origins": "https://crackit.example.com", "smtp_host": "",
+              "app_url": "http://localhost:5174"}
     values.update(overrides)
     # _env_file=None: test only these values, never the developer's real .env
     return Settings(_env_file=None, **values)
@@ -280,3 +283,25 @@ def test_old_experience_values_map_to_difficulty():
     assert "Hard" in level_guide("5+")
     with pytest.raises(ValidationError):
         InterviewConfig(interview_type="hr", experience="expert")
+
+
+# ---------------------------------------------------------------- LangSmith in production
+@pytest.mark.parametrize("trace, expected", [
+    (False, {"LANGSMITH_TRACING": "false", "LANGCHAIN_TRACING_V2": "false"}),  # off by default
+    (True, {"LANGSMITH_HIDE_INPUTS": "true", "LANGSMITH_HIDE_OUTPUTS": "true",
+            "LANGCHAIN_HIDE_INPUTS": "true", "LANGCHAIN_HIDE_OUTPUTS": "true"}),  # timings only
+])
+def test_production_tracing_is_off_or_timings_only(trace, expected):
+    from app.core.config import apply_tracing_policy
+
+    environ = {"LANGSMITH_TRACING": "true", "LANGSMITH_HIDE_INPUTS": "false"}  # a careless .env
+    apply_tracing_policy(_prod(trace_in_production=trace), environ)
+    assert expected.items() <= environ.items()
+
+
+def test_development_tracing_keeps_full_content():
+    from app.core.config import apply_tracing_policy
+
+    environ = {"LANGSMITH_TRACING": "true"}
+    apply_tracing_policy(Settings(_env_file=None, app_env="development"), environ)
+    assert environ == {"LANGSMITH_TRACING": "true"}  # untouched: full traces on the laptop

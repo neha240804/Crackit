@@ -129,7 +129,7 @@ Set (the API refuses to start in production with development defaults):
 | `POSTGRES_PASSWORD` | output of `openssl rand -hex 24` |
 | `CORS_ORIGINS` | `https://crackit-yourname.duckdns.org` |
 | `SITE_ADDRESS` | `crackit-yourname.duckdns.org` (no `https://`) |
-| `LANGSMITH_TRACING` | `false` (production forces it off anyway: traces would contain user data) |
+| `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, `TRACE_IN_PRODUCTION` | optional: set `LANGSMITH_TRACING=true`, your LangSmith key and `TRACE_IN_PRODUCTION=true` to see every AI step's latency, tokens and errors in LangSmith. Production sends **timings only** (no answers, resumes, reports or prompts; enforced in code). Leave `TRACE_IN_PRODUCTION` unset to keep tracing off |
 | `APP_URL` | `https://crackit-yourname.duckdns.org` (used in password-reset links) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | your email provider's SMTP details (see *Password-reset email* below) |
 | `CONTACT_EMAIL` | the address shown on `/privacy` for questions about data |

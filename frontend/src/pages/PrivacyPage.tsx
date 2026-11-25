@@ -71,6 +71,11 @@ export function PrivacyPage() {
               your browser's voice; some of those voices (such as Edge's "Natural" voices) are online, which sends the
               interviewer's words to the browser maker to be spoken.
             </li>
+            <li>
+              <strong>Performance monitoring:</strong> if this site has it switched on, LangSmith (LangChain) receives how
+              long each AI step took, how many tokens it used and whether it failed. Never your answers, resume, report or
+              any other content.
+            </li>
             <li><strong>Email delivery:</strong> when you ask for a password reset, your email address and the link go through the email service this site uses.</li>
             <li>
               <strong>Error reports:</strong> if this site has error alerts switched on, unexpected server errors are reported to
