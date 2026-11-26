@@ -343,7 +343,12 @@ function scoreVoice(v: SpeechSynthesisVoice, interviewer: InterviewerId) {
   if (/^en-IN/i.test(v.lang)) score += 5
   const female = FEMALE.test(v.name)
   const male = !female && MALE.test(v.name)
-  if (WANTS_FEMALE[interviewer] ? female : male) score += 20
+  // Gender decides first, quality second: Maya speaking in a man's voice is worse than a
+  // plainer voice of the right gender. (Gender was a +20 bonus, so a male "Natural" voice at
+  // 60 beat a female standard one for Maya.) Unknown gender sits in between.
+  const wantsFemale = WANTS_FEMALE[interviewer]
+  if (wantsFemale ? female : male) score += 100
+  else if (wantsFemale ? male : female) score -= 100
   return score
 }
 
@@ -351,6 +356,33 @@ export function pickBrowserVoice(interviewer: InterviewerId) {
   const english = speechSynthesis.getVoices().filter((v) => /^en/i.test(v.lang))
   return english.sort((a, b) => scoreVoice(b, interviewer) - scoreVoice(a, interviewer))[0]
 }
+
+// Chrome and Edge load their voice list a moment AFTER the page opens: getVoices() returns []
+// until the "voiceschanged" event. The interview's first line (Maya's intro) was spoken before
+// that, with no voice chosen, so the browser used its default voice: on Windows often a male
+// one ("Microsoft David"). So speaking waits for the list (at most 2 s), and the list starts
+// loading as soon as this module loads.
+let voicesLoading: Promise<SpeechSynthesisVoice[]> | null = null
+
+export function loadVoices(): Promise<SpeechSynthesisVoice[]> {
+  if (!('speechSynthesis' in window)) return Promise.resolve([])
+  const ready = speechSynthesis.getVoices()
+  if (ready.length) return Promise.resolve(ready)
+  voicesLoading ??= new Promise<SpeechSynthesisVoice[]>((resolve) => {
+    const finish = () => {
+      window.clearTimeout(timer)
+      speechSynthesis.removeEventListener('voiceschanged', onChange)
+      voicesLoading = null // an empty result may be retried next time
+      resolve(speechSynthesis.getVoices())
+    }
+    const onChange = () => speechSynthesis.getVoices().length && finish()
+    const timer = window.setTimeout(finish, 2000) // some browsers never fire the event
+    speechSynthesis.addEventListener('voiceschanged', onChange)
+  })
+  return voicesLoading
+}
+
+if (typeof window !== 'undefined') void loadVoices() // start loading before the first line
 
 // Keeping the on-screen line in step with the browser voice. It used to assume a fixed 16
 // characters per second, but voices differ (and run at rate 1.12), so the words drifted ahead
@@ -371,6 +403,10 @@ function speakBrowser(
 ) {
   return new Promise<void>((resolve) => {
     if (!('speechSynthesis' in window)) return resolve()
+    void loadVoices().then(() => (signal.aborted ? resolve() : say(resolve)))
+  })
+
+  function say(resolve: () => void) {
     speechSynthesis.cancel()
     const voice = pickBrowserVoice(interviewer)
     const voiceKey = voice?.name ?? 'default'
@@ -421,7 +457,7 @@ function speakBrowser(
       resolve()
     })
     next()
-  })
+  }
 }
 
 /** A part of the line that just became audible: everything said before it, the part itself,
